@@ -804,7 +804,7 @@ static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...)
     penv->self_stated = 1;
     //2.set write_bytes    
     penv->self_writes = stat_info.st_size;
-    printf("%s fstated %s. size:%d\n" , __FUNCTION__ , file_name , penv->self_writes);
+    //printf("%s fstated %s. size:%d\n" , __FUNCTION__ , file_name , penv->self_writes);
     break;
   }
   while(0);
