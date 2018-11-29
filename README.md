@@ -43,6 +43,8 @@ size:新的单个日志文件大小 -1则忽略
 rotate:滚动下标上限 -1则忽略
 
 备注：
+使用测试文件方式
+gcc -g use_slog.c slog.c -lm [-lrt] -o use_slog
 以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中
 
 附简单压测数据：
