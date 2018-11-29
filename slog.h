@@ -72,5 +72,6 @@ Change Attr
 */
 extern int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate);
 
-/************API*****************/
+/************API END*****************/
+
 #endif
