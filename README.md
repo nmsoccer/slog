@@ -47,7 +47,7 @@ rotate:滚动下标上限 -1则忽略
 gcc -g use_slog.c slog.c -lm [-lrt] -o use_slog
 以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中
 
-附简单压测数据：
+附简单压测：
 环境：
 CPU：Intel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz 单核
 MEM：2G
