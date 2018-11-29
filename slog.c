@@ -15,7 +15,7 @@
 #define SLOG_MAX_LINE_LEN (1024*2)
 
 #define SLOG_SELF_FILE "./slog.log"
-#define SELF_FILE_SIZE (10*1024) //self log size 10M
+#define SELF_FILE_SIZE (10*1024*1024) //self log size 10M
 #define SELF_FILE_ROTATE_MAX 9 //rotate 10 file(s)
 
 typedef struct
@@ -63,7 +63,7 @@ char *_LOG_LEVEL_LABEL[] = { //SLOG_L_XX
 static int _print_node_list(SLOG_ENV *penv , int len);
 static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...);
 static int _rotate_log_file(SLOG_ENV *penv , char *log_name , int curr_seq , int max_seq);
-static int _slog_log(FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap);
+static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap);
 /************INNER FUNC DEC*****************/
 
 extern int errno;
@@ -73,7 +73,7 @@ Open A SLOG Descriptor
 @log_name:log file name. if NULL logs print to stdout.
 @filt_level:refer SLOG_LEVEL.Only Print Log if LOG_LEVEL >= filt_level.
 @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
-@log_size:max single log_file size.if 0 then sets to defaut 1M
+@log_size:max single log_file size.if 0 then sets to defaut 10M
 @rotate:log file rotate limit.if 0 then sets to default 10
 @err:return err msg if failed.
 *RETVALUE:
@@ -92,6 +92,31 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
   int sld = -1;
   char file_name[SLOG_LOG_NAME_LEN] = {0};
   char err_msg[1024] = {0};
+
+  /***Arg Check*/
+  if(filt_level<SLOG_LEVEL_MIN || filt_level>SLOG_LEVEL_MAX)
+  {
+    _write_self_msg(penv, "%s failed! filt_level illegal! filt_level:%d", __FUNCTION__ , filt_level);
+    return -1;
+  }
+
+  if(log_degree<SLD_SEC || log_degree>SLD_NANO)
+  {
+    _write_self_msg(penv, "%s failed! log_degree illegal! log_degree:%d", __FUNCTION__ , log_degree);
+    return -1;  
+  }
+  
+  if(log_size <= 0)
+  {
+    log_size = SELF_FILE_SIZE;
+    _write_self_msg(penv, "%s warn! log_size zero. then sets to default %d!", __FUNCTION__ , log_size);    
+  }
+
+  if(rotate <= 0)
+  {
+    rotate = SELF_FILE_ROTATE_MAX;
+    _write_self_msg(penv, "%s warn! rotate zero. then sets to default %d!", __FUNCTION__ , rotate);    
+  }
   
   /***Empty List*/
   if(!penv->node_list || penv->list_len<0)
@@ -529,7 +554,7 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   
   /***Record Log*/
   va_start(ap , fmt);
-  ret = _slog_log(pnode->fp , log_level , pnode->degree , fmt , ap);
+  ret = _slog_log(penv , pnode->fp , log_level , pnode->degree , fmt , ap);
   va_end(ap);
 
   /***Rotate*/
@@ -845,7 +870,7 @@ static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...)
 /*
 Inner Function No Check arg
 */
-static int _slog_log(FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap)
+static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap)
 {
   struct tm *local_tm = NULL;  
   int year = 0;
@@ -856,16 +881,76 @@ static int _slog_log(FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
   int sec = 0;
 
   char buff[SLOG_MAX_LINE_LEN] = {0};
+  char time_appened[16] = {0};
   int len = 0;
+  int ret = -1;
 
-  time_t ts;
+  time_t ts = 0;
+  long append_num = 0;
+  
+  struct timeval tv;
+  struct timespec tp;
   va_list ap;
 
   /***va_list*/
   va_copy(ap , arg_ap);
    
   /***Time and Label*/
-  ts = time(NULL);
+  if(log_degree>=SLD_SEC && log_degree<=SLD_MIC)
+  {
+    ret = gettimeofday(&tv);
+    do
+    {
+      //check err
+      if(ret < 0)
+      {
+        _write_self_msg(penv, "%s err.call gettimeofday failed! err:%s", __FUNCTION__ , strerror(errno));
+        ts = time(NULL); //use default
+        break;
+      }
+  
+      ts = tv.tv_sec;
+      //switch
+      switch(log_degree)
+      {
+      case SLD_SEC:
+        //time_appened[0]=':';
+      break;
+  
+      case SLD_MILL:
+        append_num = tv.tv_usec/1000;
+        snprintf(time_appened , sizeof(time_appened) , ":%3d" , append_num);
+      break;
+  
+      case SLD_MIC:
+        append_num = tv.tv_usec;
+        snprintf(time_appened , sizeof(time_appened) , ":%6d" , append_num);
+      break;
+  
+      default:
+      break;
+      }
+  
+      break;
+    }
+    while(0);
+  }
+  else  //nano
+  {
+    ret = clock_gettime(CLOCK_REALTIME, &tp);
+    if(ret < 0)
+    {
+      _write_self_msg(penv, "%s err.call clock_gettime failed! err:%s", __FUNCTION__ , strerror(errno));
+      ts = time(NULL); //use default  
+    }
+    else
+    {
+      ts = tp.tv_sec;
+      append_num = tp.tv_nsec;
+      snprintf(time_appened , sizeof(time_appened) , ":%9d" , append_num);
+    }
+  }
+
   local_tm = localtime(&ts);
   if(local_tm)
   {
@@ -877,8 +962,8 @@ static int _slog_log(FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
     sec = local_tm->tm_sec;
   }
 
-  snprintf(buff , sizeof(buff) , "[%d-%02d-%02d %02d:%02d:%02d %5s] " , year , month , day , hour , min , sec ,
-   _LOG_LEVEL_LABEL[level]);
+  snprintf(buff , sizeof(buff) , "[%d-%02d-%02d %02d:%02d:%02d%s %5s] " , year , month , day , hour , min , sec ,
+    time_appened , _LOG_LEVEL_LABEL[level]);
   len = strlen(buff);
 
   /***Print Arg*/

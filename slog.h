@@ -24,7 +24,7 @@ typedef enum
 {
   SLD_SEC = 0, //second
   SLD_MILL, //milli sec
-  SLD_MAC, //macro sec
+  SLD_MIC, //micro sec
   SLD_NANO, //nano sec
 }
 SLOG_DEGREE;
