@@ -45,3 +45,33 @@ rotate:滚动下标上限 -1则忽略
 备注：
 以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中
 
+附简单压测数据：
+环境：
+CPU：Intel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz 单核
+MEM：2G
+OS：CentOS 2.6.18-308.el5
+
+数据：
+循环打印100万条日志数据,单条数据长度210Byte左右
+单条日志长度10M.滚动上限9
+
+1)
+调整日志粒度为秒级:
+测试结果：成功率100%
+CPU USAGE:99%
+MEM COST:2720K
+usr_time:1.86s
+sys_time:0.25s
+total_time:2.11s
+
+1)
+调整日志粒度为纳秒级:
+测试结果：成功率100%
+CPU USAGE:99%
+MEM COST:2736K
+usr_time:2.19s
+sys_time:0.32s
+total_time:2.52s
+
+
+
