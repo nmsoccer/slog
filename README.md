@@ -72,5 +72,11 @@ usr_time:2.19s
 sys_time:0.32s
 total_time:2.52s
 
-
+3)调整日志数量为1000万条 其余测试条件不变
+测试结果：成功率100%
+CPU USAGE:90%
+MEM COST:2752K
+usr_time:18.89s
+sys_time:3.41s
+total_time:24.77s
 
