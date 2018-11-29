@@ -28,7 +28,7 @@ err:错误时返回错误信息。
 2）int slog_close(int sld);
 关闭一个已经打开的日志控制描述符
 
-3)int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...);
+3）int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...);
 打印一条日志
 sld:通过slog_open调用成功之后返回的描述符
 log_level:该条日志的等级
@@ -43,11 +43,10 @@ size:新的单个日志文件大小 -1则忽略
 rotate:滚动下标上限 -1则忽略
 
 备注：
-使用测试文件方式
-gcc -g use_slog.c slog.c -lm [-lrt] -o use_slog
 以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中
 
 附简单压测：
+gcc -g use_slog.c slog.c -lm [-lrt] -o use_slog
 环境：
 CPU：Intel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz 单核
 MEM：2G
