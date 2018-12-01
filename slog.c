@@ -23,6 +23,8 @@ typedef struct
   char stat; //0:empty 1:valid
   int sld;
   char log_name[SLOG_LOG_NAME_LEN];
+  char ip[64];
+  int port;
   FILE *fp;
   int filt;
   int degree;
@@ -31,6 +33,7 @@ typedef struct
   int max_seq;
   int write_bytes;
   char log_stated; //if stated log
+  char format;
 }
 SLOG_NODE;
 
@@ -63,25 +66,31 @@ char *_LOG_LEVEL_LABEL[] = { //SLOG_L_XX
 static int _print_node_list(SLOG_ENV *penv , int len);
 static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...);
 static int _rotate_log_file(SLOG_ENV *penv , char *log_name , int curr_seq , int max_seq);
-static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap);
+static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
+  SLOG_FORMAT format , char *fmt , va_list arg_ap);
 /************INNER FUNC DEC*****************/
 
 extern int errno;
 /************API FUNC DEFINE*****************/
 /***
 Open A SLOG Descriptor
-@log_name:log file name. if NULL logs print to stdout.
-@filt_level:refer SLOG_LEVEL.Only Print Log if LOG_LEVEL >= filt_level.
-@log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
-@log_size:max single log_file size.if 0 then sets to defaut 10M
-@rotate:log file rotate limit.if 0 then sets to default 10
+@type:SL_LOCAL:logs to local log files.
+      SL_NETWORK:logs to remote udp server.
+@filt_level:Log filter.Only Print Log if LOG_LEVEL >= filt_level.
+@option:option value of setting.
+ @_type_value:value of diff type
+  @_local.log_name:if type is SL_LOCAL. refers to local log file name.
+  @_network.ip&port:if type is SL_NETWORK. refers to remote server ip and port
+ @format:format of log. default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
+ @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
+ @log_size:max single log_file size.if 0 then sets to defaut 1M
+ @rotate:log file rotate limit.if 0 then sets to default 10
 @err:return err msg if failed.
 *RETVALUE:
 *-1: FAILED
 *>=0:ALLOCATED SLD(SLOG Descriptor)
 */
-int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , int log_size , 
-  int rotate , char *err)
+int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err)
 {
   SLOG_NODE *pnode = NULL; 
   SLOG_ENV *penv = &slog_env;
@@ -93,30 +102,94 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
   char file_name[SLOG_LOG_NAME_LEN] = {0};
   char err_msg[1024] = {0};
 
+  SLOG_OPTION *popt = option;
+  int log_size = 0;
+  int rotate = 0;
+  int format = 0;
+  int log_degree = 0;
+
+  char log_name[SLOG_LOG_NAME_LEN] = {0};
   /***Arg Check*/
+  if(type!=SLT_LOCAL && type!=SLT_NETWORK)
+  {
+    if(err)
+      strcpy(err , "failed! type is illegal!");
+    _write_self_msg(penv, "%s failed! type is illegal! type:%d", __FUNCTION__ , type);
+    return -1;
+  }
+  
+      
   if(filt_level<SLOG_LEVEL_MIN || filt_level>SLOG_LEVEL_MAX)
   {
+    if(err)
+      strcpy(err , "failed! fil_level is illegal!");
     _write_self_msg(penv, "%s failed! filt_level illegal! filt_level:%d", __FUNCTION__ , filt_level);
     return -1;
   }
 
-  if(log_degree<SLD_SEC || log_degree>SLD_NANO)
+  if(!popt)
   {
-    _write_self_msg(penv, "%s failed! log_degree illegal! log_degree:%d", __FUNCTION__ , log_degree);
-    return -1;  
+    if(err)
+      strcpy(err , "failed! option is null!");
+    _write_self_msg(penv, "%s failed! option is NULL!", __FUNCTION__);
+    return -1;
+  }
+
+  if(type==SLT_LOCAL )
+  {
+    if(strlen(popt->_type_value._local.log_name)<=0)
+    {
+      if(err)
+        strcpy(err , "failed! type is local but log_name null!");
+      _write_self_msg(penv, "%s failed! type is local but log_name null!", __FUNCTION__);
+      return -1;
+    }
+    else
+    {
+      strncpy(log_name , popt->_type_value._local.log_name , sizeof(log_name));
+    }
+  }
+
+  if(type==SLT_NETWORK && (strlen(popt->_type_value._network.ip)<=0 || popt->_type_value._network.port<=0))
+  {
+    if(err)
+      strcpy(err , "failed! type is network but remote addr is null");
+    _write_self_msg(penv, "%s failed! type is network but remote addr is null", __FUNCTION__);
+    return -1;
+  }
+
+  /***Init*/
+  log_size = popt->log_size;
+  log_degree = popt->log_degree;
+  rotate = popt->rotate;
+  format = popt->format;
+
+
+  /***Check Opt Value*/
+  if(popt->log_degree<SLD_SEC || popt->log_degree>SLD_NANO)
+  {
+    log_degree = SLD_SEC;
+    _write_self_msg(penv, "%s warn! log_degree illegal, and sets to default %d!", __FUNCTION__ , log_degree); 
   }
   
-  if(log_size <= 0)
+  if(popt->log_size <= 0)
   {
     log_size = SELF_FILE_SIZE;
     _write_self_msg(penv, "%s warn! log_size zero. then sets to default %d!", __FUNCTION__ , log_size);    
   }
 
-  if(rotate <= 0)
+  if(popt->rotate <= 0)
   {
     rotate = SELF_FILE_ROTATE_MAX;
     _write_self_msg(penv, "%s warn! rotate zero. then sets to default %d!", __FUNCTION__ , rotate);    
   }
+
+  if(popt->format!=SLF_PREFIX && popt->format!=SLF_RAW)
+  {
+    format = SLF_PREFIX;
+    _write_self_msg(penv, "%s warn! ori_format:%d sets to default %d!", __FUNCTION__ , popt->format , format);
+  }
+
   
   /***Empty List*/
   if(!penv->node_list || penv->list_len<0)
@@ -139,8 +212,8 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
     penv->list_len = 0;//log2(1)
 
     //fill node info    
-      //log_name
-    if(log_name && strlen(log_name)>0)
+      //type_local
+    if(type == SLT_LOCAL)
     {
       strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
       snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
@@ -156,10 +229,12 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
         return -1;
       }
     }
-    else
+    else  //type_network
     {
-      pnode->fp = stdout;
+      strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
+      pnode->port = popt->_type_value._network.port;
     }
+    
 
       //other info
     pnode->stat = SLOG_NODE_STAT_VALID;
@@ -168,6 +243,7 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
     pnode->degree = log_degree;
     pnode->size = log_size;
     pnode->max_seq = rotate;
+    pnode->format = format;
 
     //final fill env info
     penv->valid_count = 1;
@@ -182,18 +258,22 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
   
   /***List*/
   real_len = (int)pow(2 , penv->list_len);
+  
   //Check Same LogName
-  for(i=0; i<real_len; i++)
+  if(type == SLT_LOCAL)
   {
-    pnode = &penv->node_list[i];
-    if(pnode->stat == SLOG_NODE_STAT_VALID)
+    for(i=0; i<real_len; i++)
     {
-      if(strcmp(log_name , pnode->log_name) == 0)
+      pnode = &penv->node_list[i];
+      if(pnode->stat == SLOG_NODE_STAT_VALID)
       {
-        if(err)
-          strcpy(err , "SLOG DESCRIPTER of this Log is existed!");
-        _write_self_msg(penv, "%s:Open Duplicated!sld:%d" ,__FUNCTION__ , i);
-        return -1;
+        if(strcmp(log_name , pnode->log_name) == 0)
+        {
+          if(err)
+            strcpy(err , "SLOG DESCRIPTER of this Log is existed!");
+          _write_self_msg(penv, "%s:Open Duplicated!sld:%d" ,__FUNCTION__ , i);
+          return -1;
+        }
       }
     }
   }
@@ -214,26 +294,25 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
       pnode = &penv->node_list[i];
       memset(pnode , 0 , sizeof(SLOG_NODE));
     
-        //log_name
-      if(log_name && strlen(log_name)>0)
+      //type local
+      if(type == SLT_LOCAL)
       {
         strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
         snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
         pnode->fp = fopen(file_name , "a+");
         if(!pnode->fp)
         {
-          strncpy(err_msg , strerror(errno) , sizeof(err_msg));
           if(err)
-            strcpy(err , err_msg);
+            strcpy(err , strerror(errno));
       
-          fprintf(stderr , "%s" , err_msg);
-          _write_self_msg(penv , err_msg);        
+          _write_self_msg(penv , "%s" , strerror(errno));        
           return -1;
         }
       }
-      else
+      else  //type_network
       {
-        pnode->fp = stdout;
+        strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
+        pnode->port = popt->_type_value._network.port;
       }
 
         //other info
@@ -242,6 +321,7 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
       pnode->degree = log_degree;
       pnode->size = log_size;
       pnode->max_seq = rotate;
+      pnode->format = format;
       pnode->sld = i;
       
         //final fill env info
@@ -314,7 +394,7 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
       pnode = &penv->node_list[i];
       memset(pnode , 0 , sizeof(SLOG_NODE));
     
-        //log_name
+      //type local
       if(log_name && strlen(log_name)>0)
       {
         strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
@@ -322,18 +402,17 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
         pnode->fp = fopen(file_name , "a+");
         if(!pnode->fp)
         {
-          strncpy(err_msg , strerror(errno) , sizeof(err_msg));
           if(err)
-            strcpy(err , err_msg);
+            strcpy(err , strerror(errno));
       
-          fprintf(stderr , "%s" , err_msg);
-          _write_self_msg(penv , err_msg);        
+          _write_self_msg(penv , strerror(errno));        
           return -1;
         }
       }
-      else
+      else  //type network
       {
-        pnode->fp = stdout;
+        strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
+        pnode->port = popt->_type_value._network.port;
       }
 
         //other info
@@ -342,6 +421,7 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
       pnode->degree = log_degree;
       pnode->size = log_size;
       pnode->max_seq = rotate;
+      pnode->format = format;
       pnode->sld = i; 
       
         //final fill env info
@@ -358,7 +438,6 @@ int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , 
       if(err)
         strcpy(err , err_msg);
       
-      fprintf(stderr , "%s" , err_msg);
       _write_self_msg(penv, err_msg);
       return -1;
     }
@@ -554,7 +633,7 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   
   /***Record Log*/
   va_start(ap , fmt);
-  ret = _slog_log(penv , pnode->fp , log_level , pnode->degree , fmt , ap);
+  ret = _slog_log(penv , pnode->fp , log_level , pnode->degree , pnode->format , fmt , ap);
   va_end(ap);
 
   /***Rotate*/
@@ -692,8 +771,8 @@ static int _print_node_list(SLOG_ENV *penv , int len)
   {
     pnode = &penv->node_list[i];
     _write_self_msg(penv, "-----");
-    _write_self_msg(penv, "STAT:%d ID:%d LOG:%s FILT:%d DEGREE:%d SIZE:%d SEQ:%d MAX_SEQ:%d", pnode->stat , pnode->sld , 
-      pnode->log_name , pnode->filt , pnode->degree , pnode->size , pnode->log_seq , pnode->max_seq);
+    _write_self_msg(penv, "STAT:%d ID:%d LOG:%s FILT:%d DEGREE:%d SIZE:%d SEQ:%d MAX_SEQ:%d FORMAT:%d", pnode->stat , pnode->sld , 
+      pnode->log_name , pnode->filt , pnode->degree , pnode->size , pnode->log_seq , pnode->max_seq , pnode->format);
   }
   _write_self_msg(penv, "==========END===========");
 
@@ -870,7 +949,8 @@ static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...)
 /*
 Inner Function No Check arg
 */
-static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , char *fmt , va_list arg_ap)
+static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
+  SLOG_FORMAT format , char *fmt , va_list arg_ap)
 {
   struct tm *local_tm = NULL;  
   int year = 0;
@@ -894,6 +974,10 @@ static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEG
 
   /***va_list*/
   va_copy(ap , arg_ap);
+
+  /***Format*/
+  if(format == SLF_RAW)
+    goto _print;
    
   /***Time and Label*/
   if(log_degree>=SLD_SEC && log_degree<=SLD_MIC)
@@ -967,6 +1051,7 @@ static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEG
   len = strlen(buff);
 
   /***Print Arg*/
+_print:
   vsnprintf(&buff[len] , sizeof(buff)-len , fmt , ap);
   va_end(ap);
 

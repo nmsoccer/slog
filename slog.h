@@ -9,16 +9,24 @@ Created by soullei 2018-11-26
 
 typedef enum
 {
-  SL_VERBOSE = 0,
+  SLT_LOCAL = 1, //local log file
+  SLT_NETWORK, //remote network
+}
+SLOG_TYPE;
+
+typedef enum
+{
+  SLOG_LEVEL_MIN = 0,
+  SL_VERBOSE = SLOG_LEVEL_MIN,
   SL_DEBUG,
   SL_INFO,
   SL_ERR,
   SL_FATAL,
+  SLOG_LEVEL_MAX = SL_FATAL,
 }
 SLOG_LEVEL;
-
-#define SLOG_LEVEL_MIN SL_VERBOSE
-#define SLOG_LEVEL_MAX SL_FATAL
+//#define SLOG_LEVEL_MIN SL_VERBOSE
+//#define SLOG_LEVEL_MAX SL_FATAL
 
 typedef enum
 {
@@ -28,6 +36,42 @@ typedef enum
   SLD_NANO, //nano sec
 }
 SLOG_DEGREE;
+
+typedef enum
+{
+  SLF_PREFIX = 0, //each log has prefix like [time level].
+  SLF_RAW, //raw info
+}
+SLOG_FORMAT;
+
+
+typedef struct
+{
+  union
+  {
+    //SLT_LOCAL
+    struct
+    {
+      char log_name[256]; 
+    }_local;
+
+    //SLT_NETWORK
+    struct
+    {
+      char ip[64];
+      int port;
+    }_network;
+    
+  }_type_value;
+
+
+  SLOG_DEGREE log_degree;
+  SLOG_FORMAT format;
+  int log_size;
+  int rotate;  
+}
+SLOG_OPTION;
+
 
 /************API*****************/
 /***
@@ -42,8 +86,30 @@ Open A SLOG Descriptor
 *-1: FAILED
 *>=0:ALLOCATED SLD(SLOG Descriptor)
 */
-extern int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , int log_size , 
-  int rotate , char *err);
+//extern int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , int log_size , 
+//  int rotate , char *err);
+
+
+/***
+Open A SLOG Descriptor
+@type:SL_LOCAL:logs to local log files.
+      SL_NETWORK:logs to remote udp server.
+@filt_level:Log filter.Only Print Log if LOG_LEVEL >= filt_level.
+@option:option value of setting.
+ @_type_value:value of diff type
+  @_local.log_name:if type is SL_LOCAL. refers to local log file name.
+  @_network.ip&port:if type is SL_NETWORK. refers to remote server ip and port
+ @format:format of log. default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
+ @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
+ @log_size:max single log_file size.if 0 then sets to defaut 1M
+ @rotate:log file rotate limit.if 0 then sets to default 10
+@err:return err msg if failed.
+*RETVALUE:
+*-1: FAILED
+*>=0:ALLOCATED SLD(SLOG Descriptor)
+*/
+extern int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);
+
 
 /***
 Close A SLOG Descriptor
