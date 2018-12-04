@@ -10,7 +10,7 @@ Created by soullei 2018-11-26
 typedef enum
 {
   SLT_LOCAL = 1, //local log file
-  SLT_NETWORK, //remote network
+  SLT_NET, //remote network
 }
 SLOG_TYPE;
 
@@ -45,6 +45,7 @@ typedef enum
 SLOG_FORMAT;
 
 
+#define SLOG_LOG_NAME_LEN 256
 typedef struct
 {
   union
@@ -52,7 +53,7 @@ typedef struct
     //SLT_LOCAL
     struct
     {
-      char log_name[256]; 
+      char log_name[SLOG_LOG_NAME_LEN]; 
     }_local;
 
     //SLT_NETWORK
@@ -60,36 +61,20 @@ typedef struct
     {
       char ip[64];
       int port;
-    }_network;
+    }_net;
     
-  }_type_value;
+  }type_value;
 
 
-  SLOG_DEGREE log_degree;
-  SLOG_FORMAT format;
-  int log_size;
-  int rotate;  
+  SLOG_DEGREE log_degree; //ref SLD_XX
+  SLOG_FORMAT format; //ref SLF_xx
+  int log_size; //size of single log file(only SLT_LOCAL)
+  int rotate;  //rotate max num log file(only SLT_LOCAL)
 }
 SLOG_OPTION;
 
 
 /************API*****************/
-/***
-Open A SLOG Descriptor
-@log_name:log file name.(<256) if NULL logs print to stdout.
-@filt_level:Log filter.Only Print Log if LOG_LEVEL >= filt_level.
-@log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
-@log_size:max single log_file size.if 0 then sets to defaut 1M
-@rotate:log file rotate limit.if 0 then sets to default 10
-@err:return err msg if failed.
-*RETVALUE:
-*-1: FAILED
-*>=0:ALLOCATED SLD(SLOG Descriptor)
-*/
-//extern int slog_open(char *log_name , SLOG_LEVEL filt_level , SLOG_DEGREE log_degree , int log_size , 
-//  int rotate , char *err);
-
-
 /***
 Open A SLOG Descriptor
 @type:SL_LOCAL:logs to local log files.
@@ -135,8 +120,9 @@ Change Attr
 @degree:refer to SLOG_DEGREE. If No Change sets to -1.
 @size:Change log size. If No Change sets to -1.
 @rotate:Change Max Rotate Number. If No Change sets to -1.
+@format:Change format of single item. If No change sets to -1.
 */
-extern int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate);
+extern int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate , int format);
 
 /************API END*****************/
 

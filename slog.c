@@ -9,9 +9,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "slog.h"
 
-#define SLOG_LOG_NAME_LEN 256
 #define SLOG_MAX_LINE_LEN (1024*2)
 
 #define SLOG_SELF_FILE "./slog.log"
@@ -21,9 +22,23 @@
 typedef struct
 {
   char stat; //0:empty 1:valid
+  char type; //type of log
   int sld;
-  char log_name[SLOG_LOG_NAME_LEN];
-  char ip[64];
+  union
+  {
+    struct
+    {
+      char log_name[SLOG_LOG_NAME_LEN];
+    }_local;
+
+    struct
+    {
+      char ip[64];
+      int port;
+      int sock_fd;
+      struct sockaddr_in remote_addr;
+    }_net;
+  }type_info;
   int port;
   FILE *fp;
   int filt;
@@ -57,7 +72,7 @@ static SLOG_ENV slog_env = {0 , -1 , NULL , -1 , 0 , 0 , 0};
 char *_LOG_LEVEL_LABEL[] = { //SLOG_L_XX
 "debug", //SLOG_L_VERBOSE
 "debug", //SLOG_L_DEBUG
-"infom",  //SLOG_L_INFO
+"info",  //SLOG_L_INFO
 "error",   //SLOG_L_ERR
 "fatal", //SLOG_L_FATAL
 };
@@ -66,8 +81,9 @@ char *_LOG_LEVEL_LABEL[] = { //SLOG_L_XX
 static int _print_node_list(SLOG_ENV *penv , int len);
 static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...);
 static int _rotate_log_file(SLOG_ENV *penv , char *log_name , int curr_seq , int max_seq);
-static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
+static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
   SLOG_FORMAT format , char *fmt , va_list arg_ap);
+static int _slog_log_net(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , char *fmt , va_list arg_ap);
 /************INNER FUNC DEC*****************/
 
 extern int errno;
@@ -100,6 +116,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
 
   int sld = -1;
   char file_name[SLOG_LOG_NAME_LEN] = {0};
+  char log_name[SLOG_LOG_NAME_LEN] = {0};
   char err_msg[1024] = {0};
 
   SLOG_OPTION *popt = option;
@@ -108,9 +125,12 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
   int format = 0;
   int log_degree = 0;
 
-  char log_name[SLOG_LOG_NAME_LEN] = {0};
+  int flags = 0;
+  int ret = -1;
+  
+  
   /***Arg Check*/
-  if(type!=SLT_LOCAL && type!=SLT_NETWORK)
+  if(type!=SLT_LOCAL && type!=SLT_NET)
   {
     if(err)
       strcpy(err , "failed! type is illegal!");
@@ -135,9 +155,10 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     return -1;
   }
 
+    //check local and info
   if(type==SLT_LOCAL )
   {
-    if(strlen(popt->_type_value._local.log_name)<=0)
+    if(strlen(popt->type_value._local.log_name)<=0)
     {
       if(err)
         strcpy(err , "failed! type is local but log_name null!");
@@ -146,11 +167,12 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     }
     else
     {
-      strncpy(log_name , popt->_type_value._local.log_name , sizeof(log_name));
+      strncpy(log_name , popt->type_value._local.log_name , sizeof(log_name));
     }
   }
 
-  if(type==SLT_NETWORK && (strlen(popt->_type_value._network.ip)<=0 || popt->_type_value._network.port<=0))
+    //check net and info
+  if(type==SLT_NET && (strlen(popt->type_value._net.ip)<=0 || popt->type_value._net.port<=0))
   {
     if(err)
       strcpy(err , "failed! type is network but remote addr is null");
@@ -215,7 +237,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       //type_local
     if(type == SLT_LOCAL)
     {
-      strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
+      strncpy(pnode->type_info._local.log_name, log_name , SLOG_LOG_NAME_LEN);
       snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
       pnode->fp = fopen(file_name , "a+");
       if(!pnode->fp)
@@ -231,13 +253,72 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     }
     else  //type_network
     {
-      strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
-      pnode->port = popt->_type_value._network.port;
+      strncpy(pnode->type_info._net.ip, popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
+      pnode->type_info._net.port = popt->type_value._net.port;
+      memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
+
+      //create
+      ret = socket(AF_INET , SOCK_DGRAM , 0);
+      if(ret < 0)
+      {
+        _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
+        return -1;
+      }
+      pnode->type_info._net.sock_fd = ret;
+
+      //non-block
+      flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
+      if(flags < 0)
+      {
+        _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
+        close(pnode->type_info._net.sock_fd);
+        return -1;
+      }
+
+      flags |= O_NONBLOCK;
+      ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
+      if(flags < 0)
+      {
+        _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
+        close(pnode->type_info._net.sock_fd);
+        return -1;
+      }
+     
+      //send buff
+      flags = (1*1024*1024); //1M. real is doubled
+      ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
+      if(ret < 0)
+      {
+        _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
+        close(pnode->type_info._net.sock_fd);
+        return -1;
+      }
+
+      //connect
+      pnode->type_info._net.remote_addr.sin_family = AF_INET;
+      pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
+      ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
+      if(ret == 0)
+      {
+        _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
+        close(pnode->type_info._net.sock_fd);
+        return -1;  
+      }
+      ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
+        sizeof(pnode->type_info._net.remote_addr));
+      if(ret < 0)
+      {
+        _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
+        close(pnode->type_info._net.sock_fd);
+        return -1;  
+      }
+      
     }
     
 
       //other info
     pnode->stat = SLOG_NODE_STAT_VALID;
+    pnode->type = type;
     pnode->sld = 0;
     pnode->filt = filt_level;
     pnode->degree = log_degree;
@@ -259,21 +340,41 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
   /***List*/
   real_len = (int)pow(2 , penv->list_len);
   
-  //Check Same LogName
+  //LOCAL TYPE
   if(type == SLT_LOCAL)
   {
+    //Check Same LogName
     for(i=0; i<real_len; i++)
     {
       pnode = &penv->node_list[i];
       if(pnode->stat == SLOG_NODE_STAT_VALID)
       {
-        if(strcmp(log_name , pnode->log_name) == 0)
+        if(strcmp(log_name , pnode->type_info._local.log_name) == 0)
         {
           if(err)
             strcpy(err , "SLOG DESCRIPTER of this Log is existed!");
-          _write_self_msg(penv, "%s:Open Duplicated!sld:%d" ,__FUNCTION__ , i);
+          _write_self_msg(penv, "<%s>:Open Duplicated!sld:%d" ,__FUNCTION__ , i);
           return -1;
         }
+      }
+    }
+  }
+  else //NET TYPE 
+  {
+    //Check Same IP:PORT
+    for(i=0; i<real_len; i++)
+    {
+      pnode = &penv->node_list[i];
+      if(pnode->stat == SLOG_NODE_STAT_NONE)
+        continue;
+
+      if(pnode->type_info._net.port==popt->type_value._net.port &&
+         strcmp(pnode->type_info._net.ip , popt->type_value._net.ip)==0)
+      {
+        if(err)
+          strcpy(err , "SLOG DESCRIPTER of IP:PORT is existed!");
+        _write_self_msg(penv, "<%s>:Open Duplicated!sld:%d" ,__FUNCTION__ , i);
+        return -1;
       }
     }
   }
@@ -297,7 +398,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       //type local
       if(type == SLT_LOCAL)
       {
-        strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
+        strncpy(pnode->type_info._local.log_name , log_name , SLOG_LOG_NAME_LEN);
         snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
         pnode->fp = fopen(file_name , "a+");
         if(!pnode->fp)
@@ -311,12 +412,71 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       }
       else  //type_network
       {
-        strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
-        pnode->port = popt->_type_value._network.port;
+        strncpy(pnode->type_info._net.ip , popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
+        pnode->type_info._net.port = popt->type_value._net.port;
+        memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
+
+        //create
+        ret = socket(AF_INET , SOCK_DGRAM , 0);
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
+          return -1;
+        }
+        pnode->type_info._net.sock_fd = ret;
+  
+        //non-block
+        flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
+        if(flags < 0)
+        {
+          _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+  
+        flags |= O_NONBLOCK;
+        ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
+        if(flags < 0)
+        {
+          _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+       
+        //send buff
+        flags = (1*1024*1024); //1M. real is doubled
+        ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+  
+        //connect
+        pnode->type_info._net.remote_addr.sin_family = AF_INET;
+        pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
+        ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
+        if(ret == 0)
+        {
+          _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
+          close(pnode->type_info._net.sock_fd);
+          return -1;  
+        }
+        ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
+          sizeof(pnode->type_info._net.remote_addr));
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
+          close(pnode->type_info._net.sock_fd);
+          return -1;  
+        }
+        
       }
 
         //other info
       pnode->stat = SLOG_NODE_STAT_VALID;
+      pnode->type = type;
       pnode->filt = filt_level;
       pnode->degree = log_degree;
       pnode->size = log_size;
@@ -397,7 +557,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       //type local
       if(log_name && strlen(log_name)>0)
       {
-        strncpy(pnode->log_name , log_name , sizeof(pnode->log_name));
+        strncpy(pnode->type_info._local.log_name , log_name , SLOG_LOG_NAME_LEN);
         snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
         pnode->fp = fopen(file_name , "a+");
         if(!pnode->fp)
@@ -411,12 +571,72 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       }
       else  //type network
       {
-        strncpy(pnode->ip , popt->_type_value._network.ip , sizeof(pnode->ip));
-        pnode->port = popt->_type_value._network.port;
+        strncpy(pnode->type_info._net.ip , popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
+        pnode->type_info._net.port = popt->type_value._net.port;
+
+        memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
+
+        //create
+        ret = socket(AF_INET , SOCK_DGRAM , 0);
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
+          return -1;
+        }
+        pnode->type_info._net.sock_fd = ret;
+  
+        //non-block
+        flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
+        if(flags < 0)
+        {
+          _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+  
+        flags |= O_NONBLOCK;
+        ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
+        if(flags < 0)
+        {
+          _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+       
+        //send buff
+        flags = (1*1024*1024); //1M. real is doubled
+        ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
+          close(pnode->type_info._net.sock_fd);
+          return -1;
+        }
+  
+        //connect
+        pnode->type_info._net.remote_addr.sin_family = AF_INET;
+        pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
+        ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
+        if(ret == 0)
+        {
+          _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
+          close(pnode->type_info._net.sock_fd);
+          return -1;  
+        }
+        ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
+          sizeof(pnode->type_info._net.remote_addr));
+        if(ret < 0)
+        {
+          _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
+          close(pnode->type_info._net.sock_fd);
+          return -1;  
+        }
+        
       }
 
         //other info
       pnode->stat = SLOG_NODE_STAT_VALID;
+      pnode->type = type;
       pnode->filt = filt_level;
       pnode->degree = log_degree;
       pnode->size = log_size;
@@ -508,10 +728,17 @@ int slog_close(int sld)
 
   //found pnode
   _write_self_msg(penv, "%s Close Sucess! sld:%d", __FUNCTION__ , sld);
-  if(pnode->log_name && pnode->fp)
+  if(pnode->type==SLT_LOCAL)
   {
-    fclose(pnode->fp);
+    if(pnode->fp)
+      fclose(pnode->fp);
   }
+  else
+  {
+    if(pnode->type_info._net.sock_fd >= 0)
+      close(pnode->type_info._net.sock_fd);
+  }
+  
   memset(pnode , 0 , sizeof(SLOG_NODE));
   penv->valid_count--;
 
@@ -579,10 +806,9 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
     return -1;  
   }
 
-  if(pnode->log_name)
-    strncpy(log_name , pnode->log_name , sizeof(log_name));
-  else
-    strncpy(log_name , "--" , sizeof(log_name));
+  if(pnode->type==SLT_LOCAL && pnode->type_info._local.log_name)
+    strncpy(log_name , pnode->type_info._local.log_name , sizeof(log_name));
+
 
   /***Other Arg Check*/
   if(log_level<SLOG_LEVEL_MIN || log_level>SLOG_LEVEL_MAX)
@@ -598,9 +824,9 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   }
 
   /***Open File*/
-  if(pnode->log_name && !pnode->fp)
+  if(pnode->type==SLT_LOCAL && !pnode->fp)
   {    
-    snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->log_name , pnode->log_seq);
+    snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->type_info._local.log_name , pnode->log_seq);
     _write_self_msg(penv, "%s. reopen %s again!", __FUNCTION__ , file_name);
     
     pnode->fp = fopen(file_name , "a+");
@@ -612,9 +838,9 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   }
 
   /***Stat File*/
-  if(pnode->log_stated == 0)
+  if(pnode->type==SLT_LOCAL && pnode->log_stated == 0)
   {
-    snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->log_name , pnode->log_seq);
+    snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->type_info._local.log_name , pnode->log_seq);
     ret = stat(file_name, &stat_info);
     do
     {
@@ -633,16 +859,16 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   
   /***Record Log*/
   va_start(ap , fmt);
-  ret = _slog_log(penv , pnode->fp , log_level , pnode->degree , pnode->format , fmt , ap);
+  ret = _slog_log(penv , pnode , log_level , pnode->degree , pnode->format , fmt , ap);
   va_end(ap);
 
   /***Rotate*/
   pnode->write_bytes += ret;
-  if(pnode->log_name && pnode->write_bytes >= pnode->size)
+  if(pnode->type==SLT_LOCAL && pnode->write_bytes >= pnode->size)
   {
     //printf("try to rotate %s and %d:%d\n" , file_name , pnode->write_bytes , pnode->size);
     fflush(pnode->fp);
-    ret = _rotate_log_file(penv, pnode->log_name , pnode->log_seq , pnode->max_seq);
+    ret = _rotate_log_file(penv, pnode->type_info._local.log_name , pnode->log_seq , pnode->max_seq);
     if(ret == 0)
     {      
       fclose(pnode->fp);
@@ -651,7 +877,7 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
       pnode->log_stated = 0;
 
       //open a new file
-      snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->log_name , pnode->log_seq);
+      snprintf(file_name , sizeof(file_name) , "%s.%d" , pnode->type_info._local.log_name , pnode->log_seq);
       _write_self_msg(penv, "%s. rotate and reopen %s again!", __FUNCTION__ , file_name);
       
       pnode->fp = fopen(file_name , "a+");
@@ -670,10 +896,11 @@ Change Attr
 @degree:refer to SLOG_DEGREE. If No Change sets to -1.
 @size:Change log size. If No Change sets to -1.
 @rotate:Change Max Rotate Number. If No Change sets to -1.
+@format:Change format of single item. If No change sets to -1.
 @RET:
 -1:failed(check at slog.log). 0:success
 */
-int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate)
+int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate , int format)
 {
   SLOG_NODE *pnode = NULL;
   SLOG_ENV *penv = &slog_env;
@@ -734,9 +961,17 @@ int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate)
     return -1;  
   }
 
+  if(format > SLF_RAW)
+  {
+    _write_self_msg(penv, "%s failed! format illegal! format:%d", __FUNCTION__ , format);
+    return -1;
+  }
+
+  _write_self_msg(penv , "%s.filt:%d degree:%d size:%d rotate:%d format:%d" , __FUNCTION__ , filt_level , 
+    degree , size , rotate , format);
   /***Start Chg*/
-  _write_self_msg(penv, "%s. >>>Before Change:filt:%d degree:%d size:%d rotate:%d", __FUNCTION__ , 
-    pnode->filt , pnode->degree , pnode->size , pnode->max_seq);
+  _write_self_msg(penv, "%s. >>>Before Change:filt:%d degree:%d size:%d rotate:%d format:%d", __FUNCTION__ , 
+    pnode->filt , pnode->degree , pnode->size , pnode->max_seq , pnode->format);
   
   if(filt_level >= 0)
     pnode->filt = filt_level;
@@ -750,8 +985,13 @@ int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate)
   if(rotate > 0)
     pnode->max_seq = rotate;
 
-  _write_self_msg(penv, "%s. <<<After Change:filt:%d degree:%d size:%d rotate:%d", __FUNCTION__ , 
-    pnode->filt , pnode->degree , pnode->size , pnode->max_seq);
+  if(format >= 0)
+    pnode->format = format;
+
+  _write_self_msg(penv, "%s. <<<After Change:filt:%d degree:%d size:%d rotate:%d format:%d", __FUNCTION__ , 
+    pnode->filt , pnode->degree , pnode->size , pnode->max_seq , pnode->format);
+
+  /***flush*/
 
   return 0;
 }
@@ -770,9 +1010,20 @@ static int _print_node_list(SLOG_ENV *penv , int len)
   for(i=0; i<len; i++)
   {
     pnode = &penv->node_list[i];
-    _write_self_msg(penv, "-----");
-    _write_self_msg(penv, "STAT:%d ID:%d LOG:%s FILT:%d DEGREE:%d SIZE:%d SEQ:%d MAX_SEQ:%d FORMAT:%d", pnode->stat , pnode->sld , 
-      pnode->log_name , pnode->filt , pnode->degree , pnode->size , pnode->log_seq , pnode->max_seq , pnode->format);
+    //_write_self_msg(penv, "-----");
+    if(pnode->type == SLT_LOCAL)
+    {
+      _write_self_msg(penv, "STAT:%d TYPE:%d ID:%d LOG:%s FILT:%d DEGREE:%d SIZE:%d SEQ:%d MAX_SEQ:%d FORMAT:%d ", pnode->stat , 
+        pnode->type , pnode->sld , pnode->type_info._local.log_name , pnode->filt , pnode->degree , pnode->size , pnode->log_seq , 
+        pnode->max_seq , pnode->format);
+    }
+    else
+    {
+      _write_self_msg(penv, "STAT:%d TYPE:%d ID:%d FILT:%d DEGREE:%d SIZE:%d SEQ:%d MAX_SEQ:%d FORMAT:%d "
+        "IP:%s PORT:%d " , pnode->stat , pnode->type , pnode->sld, pnode->filt , pnode->degree , pnode->size , pnode->log_seq , 
+        pnode->max_seq , pnode->format , pnode->type_info._net.ip , pnode->type_info._net.port);
+    }
+   
   }
   _write_self_msg(penv, "==========END===========");
 
@@ -949,7 +1200,7 @@ static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...)
 /*
 Inner Function No Check arg
 */
-static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
+static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
   SLOG_FORMAT format , char *fmt , va_list arg_ap)
 {
   struct tm *local_tm = NULL;  
@@ -960,6 +1211,7 @@ static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEG
   int min = 0;
   int sec = 0;
 
+  FILE *log_fp = NULL;
   char buff[SLOG_MAX_LINE_LEN] = {0};
   char time_appened[16] = {0};
   int len = 0;
@@ -971,6 +1223,9 @@ static int _slog_log(SLOG_ENV *penv , FILE *log_fp , SLOG_LEVEL level , SLOG_DEG
   struct timeval tv;
   struct timespec tp;
   va_list ap;
+ 
+  /***Init*/
+  log_fp = pnode->fp;
 
   /***va_list*/
   va_copy(ap , arg_ap);
@@ -1055,12 +1310,51 @@ _print:
   vsnprintf(&buff[len] , sizeof(buff)-len , fmt , ap);
   va_end(ap);
 
-  /***Print to File*/
-  //Do not flush buffer now. improve Performance.  
-  fprintf(log_fp , "%s\n" , buff);
-  ////fflush(fp);
-
-  /***Return*/
   len = strlen(buff);
+  /***Print*/
+  if(pnode->type == SLT_LOCAL) //FILE
+  {
+    //Do not flush buffer now. improve Performance.  
+    fprintf(log_fp , "%s\n" , buff);
+    ////fflush(fp);
+  }
+  else //NET
+  {
+    do
+    {
+      if(len <= 0)
+        break;
+
+      buff[len]='\n';      
+      len++;
+    
+      ret = send(pnode->type_info._net.sock_fd , buff , len , 0);
+      if(ret < 0)
+      {
+        _write_self_msg(penv, "<%s> send to %s:%d failed! err:%s", __FUNCTION__ , pnode->type_info._net.ip , 
+          pnode->type_info._net.port , strerror(errno));
+        return 0;
+      }
+
+      break;
+    }
+    while(0);
+  }
+  /***Return*/  
   return len;
 }
+
+static int _slog_log_net(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , char *fmt , va_list arg_ap)
+{
+  
+
+
+  /***Arg Check*/
+  if(!pnode)
+  {
+    _write_self_msg(penv, "<%s> failed! node nil!", __FUNCTION__);
+    return -1;
+  }
+
+}
+

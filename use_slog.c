@@ -1,4 +1,4 @@
-#include "slog.h"
+#include <slog/slog.h>
 #include<stdio.h>
 #include<errno.h>
 #include<string.h>
@@ -7,27 +7,38 @@ extern int errno;
 int main(int argc , char **argv)
 {
   int sld = -1;
+  int sld_net = -1;
   int i = 0;
   char buff[512] = {0};
   char err_msg[1024] = {0};
   char value = 'a';
   int k = 0;
+  SLOG_OPTION slog_opt;
+
+  memset(&slog_opt , 0 ,sizeof(slog_opt));
+  strncpy(slog_opt.type_value._local.log_name , "avman.log" , 256);
+  slog_opt.log_degree = SLD_SEC;
+  slog_opt.log_size = (10*1024);
+  slog_opt.rotate = 5;
+  slog_opt.format = SLF_RAW;
 
   //Test Open and Close
-  /*  
+  /*    
   while(1)
   {
     if(i==10)
       break;
     memset(buff , 0 , sizeof(buff));
     snprintf(buff , sizeof(buff) , "av%d.log" , i);
-    sld = slog_open(buff , SLOG_L_DEBUG , SLOG_D_SEC, 10*1024,5,err_msg);
+    strncpy(slog_opt._type_value._local.log_name , buff , 256);
+    sld = slog_open(SLT_LOCAL , SL_DEBUG , &slog_opt ,err_msg);
     if(sld < 0)
     {
       printf("err! msg:%s\n" , err_msg);
       return -1;
     }
-    printf("slog_open success! sld:%d\n" , sld);
+    printf("%d open success!\n" , sld);
+    slog_log(sld , SL_INFO , "slog_open success! sld:%d" , sld);
     sleep(2);
     i++;
   }
@@ -39,32 +50,54 @@ int main(int argc , char **argv)
     slog_close(i);
     i--;
   }
+  return 0; 
   */
+  
 
-  sld = slog_open("avman.log" , SL_VERBOSE , SLD_SEC, 0,5,err_msg);
+  sld = slog_open(SLT_LOCAL , SL_VERBOSE , &slog_opt, err_msg);
   if(sld < 0)
   {
     printf("err! msg:%s\n" , err_msg);
     return -1;
   }
-  printf("slog_open success! sld:%d\n" , sld);
+  slog_log(sld , SL_INFO , "slog_open success! sld:%d" , sld);
+
+  /*Test Net*/
+  memset(&slog_opt , 0 ,sizeof(slog_opt));
+  strncpy(slog_opt.type_value._net.ip , "127.0.0.1" , sizeof(slog_opt.type_value._net.ip));
+  slog_opt.type_value._net.port = 7777;
+  slog_opt.log_degree = SLD_SEC;
+  //slog_opt.log_size = 1024;
+  //slog_opt.rotate = 5;
+  slog_opt.format = SLF_PREFIX;
+  
+  sld_net = slog_open(SLT_NET , SL_DEBUG , &slog_opt , err_msg);
+  if(sld_net < 0)
+  {
+    printf("open net failed! msg:%s\n" , err_msg);
+    return -1;
+  }
+  printf("open sld net success!\n");  
+  slog_log(sld_net , SL_DEBUG , "nice to meet you!");
+  slog_log(sld_net , SL_DEBUG , "%s is a good girl!" , "suomei");
+  slog_log(sld_net , SL_DEBUG , "%s age:%d is %s!" , "cs" , 37 , "bad man");
 
   /*Test ChgAttr
   slog_log(sld , SL_VERBOSE , "This is:%s and age:%d" , "Verbose" , 31);
   slog_log(sld , SL_DEBUG , "This is:%s and age:%d" , "Debug" , 29);
-  slog_chg_attr(sld , SL_VERBOSE , SLD_MILL , 10*1024 , -1);
+  slog_chg_attr(sld , SL_ERR , SLD_MILL , 11*1024 , -1 , SLF_PREFIX);
   slog_log(sld , SL_INFO , "This is:%s and age:%d" , "Info" , 22);
   slog_log(sld , SL_ERR , "This is:%s and age:%d" , "Error" , 41);
   slog_log(sld , SL_FATAL , "This is:%s and age:%d" , "Fatal" , 60);
 
-  slog_chg_attr(sld , SL_VERBOSE , SLD_MIC , 100*1024 , -1);
+  slog_chg_attr(sld , SL_DEBUG , SLD_MIC , 10*1024 , -1 , -1);
   slog_log(sld , SL_VERBOSE , "This is:%s and age:%d" , "Verbose" , 31);
   slog_log(sld , SL_DEBUG , "This is:%s and age:%d" , "Debug" , 29);
   slog_log(sld , SL_INFO , "This is:%s and age:%d" , "Info" , 22);
-  slog_chg_attr(sld , -1 , SLD_NANO , -1 , -1);
+  slog_chg_attr(sld , -1 , SLD_NANO , -1 , -1 , -1);
   slog_log(sld , SL_ERR , "This is:%s and age:%d" , "Error" , 41);
   slog_log(sld , SL_FATAL , "This is:%s and age:%d" , "Fatal" , 60);
-  */
+  */ 
 
   /*Test Rotate
   while(1)
@@ -110,5 +143,6 @@ int main(int argc , char **argv)
  
 
   slog_close(sld);
+  slog_close(sld_net);
   return 0;
 }
