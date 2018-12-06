@@ -66,7 +66,7 @@ int main(int argc , char **argv)
   memset(&slog_opt , 0 ,sizeof(slog_opt));
   strncpy(slog_opt.type_value._net.ip , "127.0.0.1" , sizeof(slog_opt.type_value._net.ip));
   slog_opt.type_value._net.port = 7777;
-  slog_opt.log_degree = SLD_SEC;
+  slog_opt.log_degree = SLD_MIC;
   //slog_opt.log_size = 1024;
   //slog_opt.rotate = 5;
   slog_opt.format = SLF_PREFIX;
@@ -77,10 +77,11 @@ int main(int argc , char **argv)
     printf("open net failed! msg:%s\n" , err_msg);
     return -1;
   }
-  printf("open sld net success!\n");  
-  slog_log(sld_net , SL_DEBUG , "nice to meet you!");
-  slog_log(sld_net , SL_DEBUG , "%s is a good girl!" , "suomei");
-  slog_log(sld_net , SL_DEBUG , "%s age:%d is %s!" , "cs" , 37 , "bad man");
+  printf("open sld net success!\n");
+  slog_log(sld_net , SL_DEBUG , "[%d]nice to meet you!" , i++);
+  slog_log(sld_net , SL_DEBUG , "[%d]%s is a good girl!" , i++ , "suomei");
+  slog_log(sld_net , SL_DEBUG , "[%d]%s age:%d is %s!" , i++ , "cs" , 37 , "bad man");
+  
 
   /*Test ChgAttr
   slog_log(sld , SL_VERBOSE , "This is:%s and age:%d" , "Verbose" , 31);

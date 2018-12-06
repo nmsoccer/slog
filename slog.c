@@ -21,6 +21,17 @@
 
 typedef struct
 {
+  short total;
+  short count;
+  short head;
+  short tail;
+  char rb[0]; //total*SLOG_MAX_LINE_LEN
+}
+NET_LOG_RINGBUFF;
+#define MAX_RB_ITEM 0 //LOCK it TO 0.
+
+typedef struct
+{
   char stat; //0:empty 1:valid
   char type; //type of log
   int sld;
@@ -37,6 +48,7 @@ typedef struct
       int port;
       int sock_fd;
       struct sockaddr_in remote_addr;
+      NET_LOG_RINGBUFF *prb_info;
     }_net;
   }type_info;
   int port;
@@ -83,7 +95,9 @@ static int _write_self_msg(SLOG_ENV *penv , char *fmt , ...);
 static int _rotate_log_file(SLOG_ENV *penv , char *log_name , int curr_seq , int max_seq);
 static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG_DEGREE log_degree , 
   SLOG_FORMAT format , char *fmt , va_list arg_ap);
-static int _slog_log_net(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , char *fmt , va_list arg_ap);
+static int _net_open(SLOG_ENV *penv , SLOG_NODE *pnode);
+static void _net_log(SLOG_ENV *penv , SLOG_NODE *pnode , char *buff , int len);
+static int _net_refresh_log(SLOG_ENV *penv , SLOG_NODE *pnode);
 /************INNER FUNC DEC*****************/
 
 extern int errno;
@@ -254,65 +268,12 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     else  //type_network
     {
       strncpy(pnode->type_info._net.ip, popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
-      pnode->type_info._net.port = popt->type_value._net.port;
-      memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
+      pnode->type_info._net.port = popt->type_value._net.port;      
 
-      //create
-      ret = socket(AF_INET , SOCK_DGRAM , 0);
-      if(ret < 0)
-      {
-        _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
+      ret = _net_open(penv , pnode);
+      if(ret != 0)
         return -1;
-      }
-      pnode->type_info._net.sock_fd = ret;
-
-      //non-block
-      flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
-      if(flags < 0)
-      {
-        _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
-        close(pnode->type_info._net.sock_fd);
-        return -1;
-      }
-
-      flags |= O_NONBLOCK;
-      ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
-      if(flags < 0)
-      {
-        _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
-        close(pnode->type_info._net.sock_fd);
-        return -1;
-      }
-     
-      //send buff
-      flags = (1*1024*1024); //1M. real is doubled
-      ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
-      if(ret < 0)
-      {
-        _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
-        close(pnode->type_info._net.sock_fd);
-        return -1;
-      }
-
-      //connect
-      pnode->type_info._net.remote_addr.sin_family = AF_INET;
-      pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
-      ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
-      if(ret == 0)
-      {
-        _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
-        close(pnode->type_info._net.sock_fd);
-        return -1;  
-      }
-      ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
-        sizeof(pnode->type_info._net.remote_addr));
-      if(ret < 0)
-      {
-        _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
-        close(pnode->type_info._net.sock_fd);
-        return -1;  
-      }
-      
+       
     }
     
 
@@ -414,64 +375,11 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       {
         strncpy(pnode->type_info._net.ip , popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
         pnode->type_info._net.port = popt->type_value._net.port;
-        memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
-
-        //create
-        ret = socket(AF_INET , SOCK_DGRAM , 0);
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
-          return -1;
-        }
-        pnode->type_info._net.sock_fd = ret;
-  
-        //non-block
-        flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
-        if(flags < 0)
-        {
-          _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-  
-        flags |= O_NONBLOCK;
-        ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
-        if(flags < 0)
-        {
-          _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-       
-        //send buff
-        flags = (1*1024*1024); //1M. real is doubled
-        ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-  
-        //connect
-        pnode->type_info._net.remote_addr.sin_family = AF_INET;
-        pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
-        ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
-        if(ret == 0)
-        {
-          _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
-          close(pnode->type_info._net.sock_fd);
-          return -1;  
-        }
-        ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
-          sizeof(pnode->type_info._net.remote_addr));
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
-          close(pnode->type_info._net.sock_fd);
-          return -1;  
-        }
         
+
+        ret = _net_open(penv , pnode);
+        if(ret != 0)
+          return -1;           
       }
 
         //other info
@@ -574,64 +482,10 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
         strncpy(pnode->type_info._net.ip , popt->type_value._net.ip , sizeof(pnode->type_info._net.ip));
         pnode->type_info._net.port = popt->type_value._net.port;
 
-        memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
 
-        //create
-        ret = socket(AF_INET , SOCK_DGRAM , 0);
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
-          return -1;
-        }
-        pnode->type_info._net.sock_fd = ret;
-  
-        //non-block
-        flags = fcntl(pnode->type_info._net.sock_fd , F_GETFL , NULL);
-        if(flags < 0)
-        {
-          _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-  
-        flags |= O_NONBLOCK;
-        ret = fcntl(pnode->type_info._net.sock_fd , F_SETFL , &flags);
-        if(flags < 0)
-        {
-          _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-       
-        //send buff
-        flags = (1*1024*1024); //1M. real is doubled
-        ret = setsockopt(pnode->type_info._net.sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
-          close(pnode->type_info._net.sock_fd);
-          return -1;
-        }
-  
-        //connect
-        pnode->type_info._net.remote_addr.sin_family = AF_INET;
-        pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
-        ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
-        if(ret == 0)
-        {
-          _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
-          close(pnode->type_info._net.sock_fd);
-          return -1;  
-        }
-        ret = connect(pnode->type_info._net.sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
-          sizeof(pnode->type_info._net.remote_addr));
-        if(ret < 0)
-        {
-          _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
-          close(pnode->type_info._net.sock_fd);
-          return -1;  
-        }
-        
+        ret = _net_open(penv , pnode);
+        if(ret != 0)
+          return -1;             
       }
 
         //other info
@@ -737,6 +591,9 @@ int slog_close(int sld)
   {
     if(pnode->type_info._net.sock_fd >= 0)
       close(pnode->type_info._net.sock_fd);
+
+    if(pnode->type_info._net.prb_info)
+      free(pnode->type_info._net.prb_info);
   }
   
   memset(pnode , 0 , sizeof(SLOG_NODE));
@@ -1307,7 +1164,7 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
 
   /***Print Arg*/
 _print:
-  vsnprintf(&buff[len] , sizeof(buff)-len , fmt , ap);
+  vsnprintf(&buff[len] , sizeof(buff)-len-1 , fmt , ap); //content+\n+\0
   va_end(ap);
 
   len = strlen(buff);
@@ -1327,15 +1184,17 @@ _print:
 
       buff[len]='\n';      
       len++;
-    
+
+      /*
       ret = send(pnode->type_info._net.sock_fd , buff , len , 0);
       if(ret < 0)
       {
         _write_self_msg(penv, "<%s> send to %s:%d failed! err:%s", __FUNCTION__ , pnode->type_info._net.ip , 
           pnode->type_info._net.port , strerror(errno));
         return 0;
-      }
+      }*/
 
+      _net_log(penv, pnode, buff, len);
       break;
     }
     while(0);
@@ -1344,17 +1203,256 @@ _print:
   return len;
 }
 
-static int _slog_log_net(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , char *fmt , va_list arg_ap)
+static void _net_log(SLOG_ENV *penv , SLOG_NODE *pnode , char *buff , int len)
 {
+  NET_LOG_RINGBUFF *prb = NULL;
+  int ret = -1; 
+  char *dst = NULL;
+  int i = 0;
   
-
-
-  /***Arg Check*/
-  if(!pnode)
+  /***Send*/
+  ret = send(pnode->type_info._net.sock_fd , buff , len , 0);
+  if(ret < 0)
   {
-    _write_self_msg(penv, "<%s> failed! node nil!", __FUNCTION__);
+    _write_self_msg(penv, "<%s> failed! err:%s" , __FUNCTION__ , strerror(errno));
+  }
+
+  /***BUFF ACTIVATED*/
+  /*
+  Now InActive.
+  */
+  if(MAX_RB_ITEM <= 0)
+  {    
+    return;
+  }
+
+  /**********Not Here Right Now****/
+  prb = pnode->type_info._net.prb_info;
+  /***Ret Success*/
+  /*we don't know whether this sent is a real successful send.
+  * even we don't know whether last send success.
+  * save current item
+  * and clear all saved item
+  */
+  if(ret >= 0)
+  {
+    _write_self_msg(penv, "<%s> send temp done! msg:%s", __FUNCTION__ , buff);
+    //rest
+    prb->count = 0;
+    prb->head = 0;
+    prb->tail = 0;
+
+    //cpy
+    dst = &prb->rb[prb->tail*SLOG_MAX_LINE_LEN];
+    strncpy(dst , buff , len);
+    len++;
+    dst[len] = 0;
+
+    //update
+    prb->tail++;
+    prb->count++;
+
+    return;
+  }
+
+  /***Ret Fail*/  
+  switch(errno)
+  {
+    //caused by sys.
+    case EAGAIN:
+     //case EWOULDBLOCK:
+    case EINTR:
+    case ENOBUFS:
+    //cased by peer.[no listen etc.]
+    case ECONNRESET:
+    case ECONNREFUSED:
+      _write_self_msg(penv , "<%s> store in ringbuff temp." , __FUNCTION__);
+      //append to ringbuffer
+      if(prb->count >= prb->total)
+      {
+        prb->head = (prb->head + 1)% prb->total;
+        prb->count--;
+      }
+        //cpy
+      dst = &prb->rb[prb->tail*SLOG_MAX_LINE_LEN];
+      strncpy(dst , buff , len);
+      len++;
+      dst[len] = 0;
+    
+        //upt
+      prb->tail = (prb->tail + 1) % prb->total;
+      prb->count++;
+      _write_self_msg(penv, "<%s> ringbuff>> total:%d count:%d head:%d tail:%d", __FUNCTION__ , prb->total , 
+        prb->count , prb->head , prb->tail);
+
+      //refresh ringbuffer
+      _net_refresh_log(penv, pnode);
+      
+    break;
+
+    default:
+      _write_self_msg(penv, "<%s> drop log directly! errno:%d content:%s" , __FUNCTION__ , errno , buff);
+      return;
+    break;    
+  }
+
+  return;
+}
+
+static int _net_refresh_log(SLOG_ENV *penv , SLOG_NODE *pnode)
+{
+  NET_LOG_RINGBUFF *prb = NULL;
+  int ret = -1; 
+  char *dst = NULL;
+  int i = 0;
+
+  prb = pnode->type_info._net.prb_info; 
+  /***RB FULL*/
+  if(prb->head == prb->tail)
+  {
+    _write_self_msg(penv, "<%s> resend all!", __FUNCTION__);
+    //error
+    if(prb->count != prb->tail)
+    {
+      _write_self_msg(penv, "<%s> ringbuff meets an problem. count:%d neq total:%d. refresh all!", __FUNCTION__ , 
+        prb->count , prb->total);
+      prb->count = 0;
+      prb->head = 0;
+      prb->tail = 0;
+      return -1;
+    }
+
+    //head-->end
+    for(i=prb->head; i<prb->total; i++)
+    {
+      dst = &prb->rb[i*SLOG_MAX_LINE_LEN];
+      ret = send(pnode->type_info._net.sock_fd , dst , strlen(dst) , 0);
+      if(ret < 0)
+        _write_self_msg(penv, "<%s> resend all rb[%d]:%s failed! err:%s", __FUNCTION__ , i , dst , strerror(errno));
+      else
+        _write_self_msg(penv, "<%s> resend all rb[%d]:%s done!", __FUNCTION__ , i , dst);
+   
+    }
+
+    //first-->tail
+    for(i=0; i<prb->tail; i++)
+    {
+      dst = &prb->rb[i*SLOG_MAX_LINE_LEN];
+      ret = send(pnode->type_info._net.sock_fd , dst , strlen(dst) , 0);
+      if(ret < 0)
+        _write_self_msg(penv, "<%s> resend all rb[%d]:%s failed! err:%s", __FUNCTION__ , i , dst , strerror(errno));  
+      else
+        _write_self_msg(penv, "<%s> resend all rb[%d]:%s done!", __FUNCTION__ , i , dst);
+    }
+
+    return 0; 
+  }
+  
+  /**head-->tail*/
+  if(prb->head < prb->tail) 
+  {
+    _write_self_msg(penv, "<%s> resend rb from head to tail!", __FUNCTION__);
+    for(i=prb->head; i<prb->tail; i++)
+    {
+      dst = &prb->rb[i*SLOG_MAX_LINE_LEN];
+      ret = send(pnode->type_info._net.sock_fd , dst , strlen(dst) , 0);
+      if(ret < 0)
+        _write_self_msg(penv, "<%s> resend h->t rb[%d]:%s failed! err:%s", __FUNCTION__ , i , dst , strerror(errno));  
+      else
+        _write_self_msg(penv, "<%s> resend h->t rb[%d]:%s done!", __FUNCTION__ , i , dst);
+    }
+
+    return 0;
+  }
+
+  /***head > tail*/
+  //will not happend here
+  _write_self_msg(penv, "<%s> fresh rb. head > tail! should not happen here!", __FUNCTION__);
+  prb->count = 0;
+  prb->head = 0;
+  prb->tail = 0;
+  return -1;    
+}
+
+static int _net_open(SLOG_ENV *penv , SLOG_NODE *pnode)
+{
+  int ret = -1;
+  int flags = 0;
+  int sock_fd = -1;
+  NET_LOG_RINGBUFF *prb = NULL;
+
+  memset(&pnode->type_info._net.remote_addr , 0 , sizeof(struct sockaddr_in));
+  //create
+  sock_fd = socket(AF_INET , SOCK_DGRAM , 0);
+  if(sock_fd < 0)
+  {
+    _write_self_msg(penv, "<%s> socket failed! err:%s",__FUNCTION__ , strerror(errno));
     return -1;
   }
 
+  //non-block
+  flags = fcntl(sock_fd , F_GETFL , NULL);
+  if(flags < 0)
+  {
+    _write_self_msg(penv, "<%s> fcntl get flag failed! err:%s",__FUNCTION__ , strerror(errno));
+    close(sock_fd);
+    return -1;
+  }
+
+  flags |= O_NONBLOCK;
+  ret = fcntl(sock_fd , F_SETFL , &flags);
+  if(flags < 0)
+  {
+    _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
+    close(sock_fd);
+    return -1;
+  }
+     
+  //send buff
+  flags = (1*1024*1024); //1M. real is doubled
+  ret = setsockopt(sock_fd , SOL_SOCKET , SO_SNDBUF , &flags , sizeof(flags));
+  if(ret < 0)
+  {
+    _write_self_msg(penv, "<%s> setsockopt set sendbuf failed! err:%s",__FUNCTION__ , strerror(errno));
+    close(sock_fd);
+    return -1;
+  }
+
+  //connect
+  pnode->type_info._net.remote_addr.sin_family = AF_INET;
+  pnode->type_info._net.remote_addr.sin_port = htons(pnode->type_info._net.port);
+  ret = inet_aton(pnode->type_info._net.ip , &pnode->type_info._net.remote_addr.sin_addr);
+  if(ret == 0)
+  {
+    _write_self_msg(penv, "<%s> inet_aton %s failed!",__FUNCTION__ , pnode->type_info._net.ip);
+    close(sock_fd);
+    return -1;  
+  }
+  ret = connect(sock_fd , (struct sockaddr *)&pnode->type_info._net.remote_addr , 
+        sizeof(pnode->type_info._net.remote_addr));
+  if(ret < 0)
+  {
+    _write_self_msg(penv, "<%s> connect %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
+    close(sock_fd);
+    return -1;  
+  }
+
+  //alloc ringbuff
+  if(MAX_RB_ITEM > 0)
+  {
+    prb = (NET_LOG_RINGBUFF *)calloc(1 , (sizeof(NET_LOG_RINGBUFF) + MAX_RB_ITEM*SLOG_MAX_LINE_LEN));
+    if(!prb)
+    {
+      _write_self_msg(penv, "<%s> alloc ringbuff %s:%d failed!",__FUNCTION__ , pnode->type_info._net.ip , pnode->type_info._net.port);
+      close(sock_fd);
+      return -1;
+    }
+    prb->total = MAX_RB_ITEM;
+    pnode->type_info._net.prb_info = prb;
+  }
+
+  //set info  
+  pnode->type_info._net.sock_fd = sock_fd;
+  return 0;
 }
 
