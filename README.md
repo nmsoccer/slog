@@ -24,16 +24,14 @@ struct
     {
       char log_name[256]; 
     }_local;
-
     //SLT_NETWORK
     struct
     {
       char ip[64];
       int port;
-    }_network;
+    }_net;
     
   }_type_value;
-
 
   SLOG_DEGREE log_degree;
   SLOG_FORMAT format;
