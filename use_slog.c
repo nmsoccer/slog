@@ -20,7 +20,7 @@ int main(int argc , char **argv)
   slog_opt.log_degree = SLD_SEC;
   slog_opt.log_size = (10*1024);
   slog_opt.rotate = 5;
-  slog_opt.format = SLF_RAW;
+  slog_opt.format = SLF_PREFIX;
 
   //Test Open and Close
   /*    
@@ -61,6 +61,7 @@ int main(int argc , char **argv)
     return -1;
   }
   slog_log(sld , SL_INFO , "slog_open success! sld:%d" , sld);
+  slog_log(sld , SL_INFO , "then try to open slog_net!");
 
   /*Test Net*/
   memset(&slog_opt , 0 ,sizeof(slog_opt));
@@ -98,7 +99,7 @@ int main(int argc , char **argv)
   slog_chg_attr(sld , -1 , SLD_NANO , -1 , -1 , -1);
   slog_log(sld , SL_ERR , "This is:%s and age:%d" , "Error" , 41);
   slog_log(sld , SL_FATAL , "This is:%s and age:%d" , "Fatal" , 60);
-  */ 
+  */
 
   /*Test Rotate
   while(1)
@@ -119,7 +120,7 @@ int main(int argc , char **argv)
   }*/
 
   /*Test Pressure
-  slog_chg_attr(sld , SL_DEBUG , SLD_NANO , 10*1024*1024 , 9);
+  slog_chg_attr(sld , SL_DEBUG , SLD_NANO , 10*1024*1024 , 9 , -1);
   long uid = 210001200;
   long zone_id = 712313746151703765;
   int exp = 1600;
@@ -140,7 +141,7 @@ int main(int argc , char **argv)
       fail++; 
   }
   printf("test done success:%d fail:%d\n" , success , fail);
-  */
+  */ 
  
 
   slog_close(sld);

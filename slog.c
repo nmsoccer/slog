@@ -14,6 +14,7 @@
 #include "slog.h"
 
 #define SLOG_MAX_LINE_LEN (1024*2)
+#define SLOG_LOG_LINE_BUFF (SLOG_MAX_LINE_LEN)
 
 #define SLOG_SELF_FILE "./slog.log"
 #define SELF_FILE_SIZE (10*1024*1024) //self log size 10M
@@ -61,6 +62,7 @@ typedef struct
   int write_bytes;
   char log_stated; //if stated log
   char format;
+  char *log_buff; //SLOG_LOG_LINE_BUFF
 }
 SLOG_NODE;
 
@@ -247,7 +249,19 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     //basic env info
     penv->list_len = 0;//log2(1)
 
-    //fill node info    
+    //fill node info
+      //ling buff
+    pnode->log_buff = (char *)calloc(1 , SLOG_LOG_LINE_BUFF);
+    if(!pnode->log_buff)
+    {
+      strncpy(err_msg , strerror(errno),sizeof(err_msg));
+      if(err)
+        strcpy(err , err_msg);
+      
+      _write_self_msg(penv , "<%s> alloc 1 log buff failed! reason:%s" , __FUNCTION__ , err_msg);        
+      return -1;  
+    }
+    
       //type_local
     if(type == SLT_LOCAL)
     {
@@ -260,8 +274,8 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
         if(err)
           strcpy(err , err_msg);
       
-        fprintf(stderr , "%s" , err_msg);
-        _write_self_msg(penv , err_msg);        
+        _write_self_msg(penv , err_msg);
+        free(pnode->log_buff);
         return -1;
       }
     }
@@ -272,8 +286,10 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
 
       ret = _net_open(penv , pnode);
       if(ret != 0)
+      {
+        free(pnode->log_buff);
         return -1;
-       
+      }
     }
     
 
@@ -355,6 +371,18 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     {
       pnode = &penv->node_list[i];
       memset(pnode , 0 , sizeof(SLOG_NODE));
+
+      //ling buff
+      pnode->log_buff = (char *)calloc(1 , SLOG_LOG_LINE_BUFF);
+      if(!pnode->log_buff)
+      {
+        strncpy(err_msg , strerror(errno),sizeof(err_msg));
+        if(err)
+          strcpy(err , err_msg);
+        
+        _write_self_msg(penv , "<%s> alloc 2 log buff failed! reason:%s" , __FUNCTION__ , err_msg);        
+        return -1;  
+      }
     
       //type local
       if(type == SLT_LOCAL)
@@ -367,7 +395,8 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
           if(err)
             strcpy(err , strerror(errno));
       
-          _write_self_msg(penv , "%s" , strerror(errno));        
+          _write_self_msg(penv , "%s" , strerror(errno));
+          free(pnode->log_buff);
           return -1;
         }
       }
@@ -379,7 +408,10 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
 
         ret = _net_open(penv , pnode);
         if(ret != 0)
-          return -1;           
+        {
+          free(pnode->log_buff);
+          return -1;
+        }
       }
 
         //other info
@@ -461,6 +493,17 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
     {
       pnode = &penv->node_list[i];
       memset(pnode , 0 , sizeof(SLOG_NODE));
+      //ling buff
+      pnode->log_buff = (char *)calloc(1 , SLOG_LOG_LINE_BUFF);
+      if(!pnode->log_buff)
+      {
+        strncpy(err_msg , strerror(errno),sizeof(err_msg));
+        if(err)
+          strcpy(err , err_msg);
+        
+        _write_self_msg(penv , "<%s> alloc 3 log buff failed! reason:%s" , __FUNCTION__ , err_msg);        
+        return -1;  
+      }
     
       //type local
       if(log_name && strlen(log_name)>0)
@@ -472,7 +515,8 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
         {
           if(err)
             strcpy(err , strerror(errno));
-      
+
+          free(pnode->log_buff);
           _write_self_msg(penv , strerror(errno));        
           return -1;
         }
@@ -485,7 +529,10 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
 
         ret = _net_open(penv , pnode);
         if(ret != 0)
+        {
+          free(pnode->log_buff);
           return -1;             
+        }
       }
 
         //other info
@@ -581,6 +628,7 @@ int slog_close(int sld)
   while(0);
 
   //found pnode
+    //recyle memory
   _write_self_msg(penv, "%s Close Sucess! sld:%d", __FUNCTION__ , sld);
   if(pnode->type==SLT_LOCAL)
   {
@@ -595,7 +643,12 @@ int slog_close(int sld)
     if(pnode->type_info._net.prb_info)
       free(pnode->type_info._net.prb_info);
   }
+
+  if(pnode->log_buff)
+    free(pnode->log_buff);
+
   
+    //reset node
   memset(pnode , 0 , sizeof(SLOG_NODE));
   penv->valid_count--;
 
@@ -1069,7 +1122,8 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
   int sec = 0;
 
   FILE *log_fp = NULL;
-  char buff[SLOG_MAX_LINE_LEN] = {0};
+  //char buff[SLOG_MAX_LINE_LEN] = {0};
+  char *buff = pnode->log_buff;
   char time_appened[16] = {0};
   int len = 0;
   int ret = -1;
@@ -1094,7 +1148,7 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
   /***Time and Label*/
   if(log_degree>=SLD_SEC && log_degree<=SLD_MIC)
   {
-    ret = gettimeofday(&tv);
+    ret = gettimeofday(&tv , NULL);
     do
     {
       //check err
@@ -1158,22 +1212,23 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
     sec = local_tm->tm_sec;
   }
 
-  snprintf(buff , sizeof(buff) , "[%d-%02d-%02d %02d:%02d:%02d%s %5s] " , year , month , day , hour , min , sec ,
+  snprintf(buff , SLOG_LOG_LINE_BUFF , "[%d-%02d-%02d %02d:%02d:%02d%s %5s] " , year , month , day , hour , min , sec ,
     time_appened , _LOG_LEVEL_LABEL[level]);
   len = strlen(buff);
 
   /***Print Arg*/
 _print:
-  vsnprintf(&buff[len] , sizeof(buff)-len-1 , fmt , ap); //content+\n+\0
+  vsnprintf(&buff[len] , SLOG_LOG_LINE_BUFF-len-1 , fmt , ap); //content+\n+\0
   va_end(ap);
 
   len = strlen(buff);
   /***Print*/
   if(pnode->type == SLT_LOCAL) //FILE
   {
-    //Do not flush buffer now. improve Performance.  
+    //Do not flush buffer now. improve Performance.
+    //printf("buff is :%s\n" , buff);
     fprintf(log_fp , "%s\n" , buff);
-    ////fflush(fp);
+    //fflush(log_fp);
   }
   else //NET
   {
