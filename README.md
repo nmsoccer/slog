@@ -8,8 +8,17 @@ A simple log library
 * **日志滚动** 支持日志的自动滚动，可以设置滚动下标上限和单日志文件大小  
 * **时间粒度** 支持设置日志的不同粒度，默认粒度到秒，可以到毫秒，微秒及纳秒  
 * **动态修正** 在进程过程中可以动态修改打开日志时的一些基本属性  
-**使用方法**：将slog.h slog.c加入源码编译即可  
 _注意：该日志库目前非线程安全，多线程类型程序需斟酌使用._
+
+---
+## 安装  
+下载安装包文件xx.zip  
+unzip xx.zip  
+./install.sh  
+默认头文件会装到/usr/local/include/slog 库文件位于/usr/local/lib/libslog.so  
+
+编译:  
+gcc use_slog.c -lm -lslog -o use_slog  
 
 ---
 ## API:
@@ -77,7 +86,7 @@ _动态更新已打开描述符的属性_
 
 ---
 ### 简单压测：  
-gcc -g use_slog.c slog.c -lm [-lrt] -o use_slog  
+gcc -g use_slog.c -lm [-lrt] -lslog -o use_slog  
 **环境：**   
 CPU：Intel(R) Xeon(R) CPU E5-2682 v4 @ 2.50GHz 单核  
 MEM：2G  
