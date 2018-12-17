@@ -19,6 +19,7 @@ unzip xx.zip
 
 编译:  
 gcc use_slog.c -lm -lslog -o use_slog  
+如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig  
 
 ---
 ## API:
