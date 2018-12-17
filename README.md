@@ -72,8 +72,8 @@ _动态更新已打开描述符的属性_
 * rotate:滚动下标上限 -1则忽略  
 
 ---
-***备注：  
-***以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中  
+**备注:**    
+***以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
 
 ---
 ### 简单压测：  
@@ -89,30 +89,26 @@ OS：CentOS 2.6.18-308.el5
 
 #### 调整日志粒度为秒级:
 _测试结果：成功率100%_  
-|参数|指标|
-|:-:|-:|
-|CPU|99%|  
-|MEM|2720K|    
-* usr_time:1.86s  
-* sys_time:0.25s  
-* total_time:2.11s  
-| Item      |    Value | Qty|
-| :-------- | --------:| :--:|
-| Computer  | 1600 USD |  5   |
+* CPU 99%  
+* MEM 2720K    
+* usr_time 1.86s  
+* sys_time 0.25s  
+* total_time 2.11s  
+
 
 #### 调整日志粒度为纳秒级:
 _测试结果：成功率100%_  
-* CPU USAGE:99%
-* MEM COST:2736K
-* usr_time:2.19s
-* sys_time:0.32s
-* total_time:2.52s
+* CPU 99%
+* MEM 2736K
+* usr_time 2.19s
+* sys_time 0.32s
+* total_time 2.52s
 
 #### 调整日志数量为1000万条（10\*1024\*1024） 其余测试条件不变
 _测试结果：成功率100%_  
-* CPU USAGE:90%
-* MEM COST:2752K
-* usr_time:18.89s
-* sys_time:3.41s
-* total_time:24.77s
+* CPU 90%
+* MEM 2752K
+* usr_time 18.89s
+* sys_time 3.41s
+* total_time 24.77s
 
