@@ -7,6 +7,10 @@ Created by soullei 2018-11-26
 #include<stdio.h>
 #include<stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum
 {
   SLT_LOCAL = 1, //local log file
@@ -125,5 +129,9 @@ Change Attr
 extern int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate , int format);
 
 /************API END*****************/
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
