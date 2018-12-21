@@ -10,7 +10,6 @@ A simple log library
 * **动态修正** 在进程过程中可以动态修改打开日志时的一些基本属性  
 _注意：该日志库目前非线程安全，多线程类型程序需斟酌使用._
 
----
 ## 安装  
 下载安装包文件xx.zip  
 unzip xx.zip  
@@ -21,10 +20,10 @@ unzip xx.zip
 gcc use_slog.c -lm -lslog -o use_slog  
 如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig  
 
----
+
 ## API:
-### int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);
-SLOG_OPTIN结构如下  
+- **``int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);``**  
+  * SLOG_OPTIN结构如下  
 ```
 struct
 {
@@ -64,24 +63,23 @@ struct
 _说明：相同文件名(包括路径)只能打开一次。另外的不同日志文件可以在程序里打开，返回不同的描述符_
 
 
-### int slog_close(int sld);
-_关闭一个已经打开的日志控制描述符_ 
+- **``int slog_close(int sld);``**  
+  * _关闭一个已经打开的日志控制描述符_ 
 
-### int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...);  
-_打印一条日志_  
-* sld:通过slog_open调用成功之后返回的描述符  
-* log_level:该条日志的等级  
-* fmt及...：日志的模式及内容 形如printf  
+- **``int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...);``**  
+  * _打印一条日志_  
+  * sld:通过slog_open调用成功之后返回的描述符  
+  * log_level:该条日志的等级  
+  * fmt及...：日志的模式及内容 形如printf  
 
-### int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate);  
-_动态更新已打开描述符的属性_  
-* sld:已打开的描述符  
-* filt_level:新的过滤等级.-1则忽略  
-* degree:新的日志粒度. -1则忽略  
-* size:新的单个日志文件大小 -1则忽略  
-* rotate:滚动下标上限 -1则忽略  
+- **``int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate);``**    
+  * _动态更新已打开描述符的属性_  
+  * sld:已打开的描述符  
+  * filt_level:新的过滤等级.-1则忽略  
+  * degree:新的日志粒度. -1则忽略  
+  * size:新的单个日志文件大小 -1则忽略  
+  * rotate:滚动下标上限 -1则忽略  
 
----
 **备注:**    
 ***以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
 
