@@ -22,43 +22,43 @@ gcc use_slog.c -lm -lslog -o use_slog
 
 
 ## API:
-- **``int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);``**  
-  * SLOG_OPTIN结构如下  
-```
-struct
-{
-  union
+- **``int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);``**
+  * SLOG_OPTION结构:
+  ```
+  struct
   {
-    //SLT_LOCAL
-    struct
+    union
     {
-      char log_name[256]; 
-    }_local;
-    //SLT_NETWORK
-    struct
-    {
-      char ip[64];
-      int port;
-    }_net;
+      //SLT_LOCAL
+      struct
+      {
+        char log_name[256]; 
+      }_local;
+      //SLT_NETWORK
+      struct
+      {
+        char ip[64];
+        int port;
+      }_net;
     
-  }_type_value;
+    }_type_value;
 
-  SLOG_DEGREE log_degree;
-  SLOG_FORMAT format;
-  int log_size;
-  int rotate;  
-}
-```
-用于程序中打开一个日志控制结构。成功则返回控制结构描述符，失败返回-1并填充错误信息到err  
-* type:日志类型，是本地文件日志还是输出到网络日志   
- _type_value._local.log_name:如果是本地日志类型，则用作日志的文件名  
- _type_value._network.ip&port:远端服务器监听udp的ip及端口  
-* filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.h  
-* log_degree:日志记录粒度。默认为秒。具体请参见宏slog.h  
-* log_size:单个日志文件大小.如果填0则默认为10M.  
-* rotate:日志滚动下标上限。如果填0则使用默认值5  
-* format:标记是加前缀打印日志(包含日期 级别)还是原生输出  
-* err:错误时返回错误信息。  
+    SLOG_DEGREE log_degree;
+    SLOG_FORMAT format;
+    int log_size;
+    int rotate;  
+  }
+  ```
+  * 用于程序中打开一个日志控制结构。成功则返回控制结构描述符，失败返回-1并填充错误信息到err  
+  * type:日志类型，是本地文件日志还是输出到网络日志   
+    _type_value._local.log_name:如果是本地日志类型，则用作日志的文件名  
+    _type_value._network.ip&port:远端服务器监听udp的ip及端口  
+  * filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.h  
+  * log_degree:日志记录粒度。默认为秒。具体请参见宏slog.h  
+  * log_size:单个日志文件大小.如果填0则默认为10M.  
+  * rotate:日志滚动下标上限。如果填0则使用默认值5  
+  * format:标记是加前缀打印日志(包含日期 级别)还是原生输出  
+  * err:错误时返回错误信息。  
 
 _说明：相同文件名(包括路径)只能打开一次。另外的不同日志文件可以在程序里打开，返回不同的描述符_
 
