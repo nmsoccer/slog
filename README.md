@@ -1,6 +1,6 @@
 # SLOG
 A simple log library
-一个简单的程序本地日志库(4个API.一个源文件,一个头文件)
+一个简单的程序本地日志库  
 
 支持功能:
 * **日志分级** 目前分为verbose,debug,info,err,fatal等五个等级，打印日志时设定。  
