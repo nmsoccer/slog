@@ -10,18 +10,18 @@ A simple log library
 * **动态修正** 在进程过程中可以动态修改打开日志时的一些基本属性  
 _注意：该日志库目前非线程安全，多线程类型程序需斟酌使用._
 
-## 安装  
+### 安装  
 下载安装包文件xx.zip  
 unzip xx.zip  
 ./install.sh  
-默认头文件会装到/usr/local/include/slog 库文件位于/usr/local/lib/libslog.so  
+_默认头文件会装到/usr/local/include/slog 库文件位于/usr/local/lib/libslog.so_    
 
 编译:  
 gcc use_slog.c -lm -lslog -o use_slog  
-如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig  
+_如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig_  
 
 
-## API:
+### API:
 - **``int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);``**
   * SLOG_OPTION结构:
   ```
@@ -81,9 +81,8 @@ _说明：相同文件名(包括路径)只能打开一次。另外的不同日�
   * rotate:滚动下标上限 -1则忽略  
 
 **备注:**    
-***以上所有API调用过程中产生的错误，以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
+***以上所有API调用过程中产生的错误以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
 
----
 ### 简单压测：  
 gcc -g use_slog.c -lm [-lrt] -lslog -o use_slog  
 **环境：**   
