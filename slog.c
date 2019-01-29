@@ -17,8 +17,8 @@
 #define SLOG_LOG_LINE_BUFF (SLOG_MAX_LINE_LEN)
 
 #define SLOG_SELF_FILE "./slog.log"
-#define SELF_FILE_SIZE (10*1024*1024) //self log size 10M
-#define SELF_FILE_ROTATE_MAX 9 //rotate 10 file(s)
+#define SELF_FILE_SIZE (20*1024*1024) //self log size 20M
+#define SELF_FILE_ROTATE_MAX 5 //rotate 5 file(s)
 
 typedef struct
 {
@@ -115,8 +115,8 @@ Open A SLOG Descriptor
   @_network.ip&port:if type is SL_NETWORK. refers to remote server ip and port
  @format:format of log. default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
  @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
- @log_size:max single log_file size.if 0 then sets to defaut 1M
- @rotate:log file rotate limit.if 0 then sets to default 10
+ @log_size:max single log_file size.if 0 then sets to defaut 20M
+ @rotate:log file rotate limit.if 0 then sets to default 5
 @err:return err msg if failed.
 *RETVALUE:
 *-1: FAILED
