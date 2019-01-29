@@ -48,7 +48,7 @@ typedef enum
 }
 SLOG_FORMAT;
 
-
+/************SLOG OPTION*****************/
 #define SLOG_LOG_NAME_LEN 256
 typedef struct
 {
@@ -70,10 +70,10 @@ typedef struct
   }type_value;
 
 
-  SLOG_DEGREE log_degree; //ref SLD_XX
-  SLOG_FORMAT format; //ref SLF_xx
-  int log_size; //size of single log file(only SLT_LOCAL)
-  int rotate;  //rotate max num log file(only SLT_LOCAL)
+  SLOG_DEGREE log_degree; //ref SLD_XX (0:default sec)
+  SLOG_FORMAT format; //ref SLF_xx (0:default prefix)
+  int log_size; //size of single log file(only SLT_LOCAL  0:default 10M)
+  int rotate;  //rotate max num log file(only SLT_LOCAL  0:default 9)
 }
 SLOG_OPTION;
 
@@ -88,8 +88,8 @@ Open A SLOG Descriptor
  @_type_value:value of diff type
   @_local.log_name:if type is SL_LOCAL. refers to local log file name.
   @_network.ip&port:if type is SL_NETWORK. refers to remote server ip and port
- @format:format of log. default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
- @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
+ @format:format of log. if 0 then default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
+ @log_degree:refer SLOG_DEGREE.the timing degree of log. if 0 then default by seconds.
  @log_size:max single log_file size.if 0 then sets to defaut 1M
  @rotate:log file rotate limit.if 0 then sets to default 10
 @err:return err msg if failed.

@@ -17,11 +17,13 @@ int main(int argc , char **argv)
 
   memset(&slog_opt , 0 ,sizeof(slog_opt));
   strncpy(slog_opt.type_value._local.log_name , "avman.log" , 256);
+  /*use 0 as default or set each one
   slog_opt.log_degree = SLD_SEC;
   slog_opt.log_size = (10*1024);
   slog_opt.rotate = 5;
   slog_opt.format = SLF_PREFIX;
-
+  */
+  
   //Test Open and Close
   /*    
   while(1)
