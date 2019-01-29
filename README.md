@@ -1,13 +1,14 @@
 # SLOG
 A simple log library
-一个简单的程序本地日志库  
+一个简单的程序本地&网络日志库  
 
 支持功能:
 * **日志分级** 目前分为verbose,debug,info,err,fatal等五个等级，打印日志时设定。  
 * **日志过滤** 在打开日志结构时设置过滤级别.  
 * **日志滚动** 支持日志的自动滚动，可以设置滚动下标上限和单日志文件大小  
 * **时间粒度** 支持设置日志的不同粒度，默认粒度到秒，可以到毫秒，微秒及纳秒  
-* **动态修正** 在进程过程中可以动态修改打开日志时的一些基本属性  
+* **属性修正** 在进程过程中可以动态修改打开日志时的一些基本属性  
+* **网络日志** 支持将文本日志以UDP包的方式直接发到远程服务器
 _注意：该日志库目前非线程安全，多线程类型程序需斟酌使用._
 
 ### 安装  
@@ -53,11 +54,11 @@ _如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后�
   * type:日志类型，是本地文件日志还是输出到网络日志   
     _type_value._local.log_name:如果是本地日志类型，则用作日志的文件名  
     _type_value._network.ip&port:远端服务器监听udp的ip及端口  
-  * filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.h  
-  * log_degree:日志记录粒度。默认为秒。具体请参见宏slog.h  
+  * filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.h:SL_XX    
+  * log_degree:日志记录粒度。如果填0默认值为秒。具体请参见宏slog.h  
   * log_size:单个日志文件大小.如果填0则默认为10M.  
   * rotate:日志滚动下标上限。如果填0则使用默认值5  
-  * format:标记是加前缀打印日志(包含日期 级别)还是原生输出  
+  * format:标记是加前缀打印日志(包含日期 级别)还是原生输出.如果填0则默认带时间前缀  
   * err:错误时返回错误信息。  
 
 _说明：相同文件名(包括路径)只能打开一次。另外的不同日志文件可以在程序里打开，返回不同的描述符_
@@ -82,6 +83,69 @@ _说明：相同文件名(包括路径)只能打开一次。另外的不同日�
 
 **备注:**    
 ***以上所有API调用过程中产生的错误以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
+
+### SAMPLE
+下面的测试代码均源于use_slog.c  
+* 本地日志  
+```
+  ...
+  int sld = -1;
+  SLOG_OPTION slog_opt;
+
+  memset(&slog_opt , 0 ,sizeof(slog_opt));
+  strncpy(slog_opt.type_value._local.log_name , "avman.log" , 256);
+  /*use 0 as default or set each one
+  slog_opt.log_degree = SLD_SEC;
+  slog_opt.log_size = (10*1024);
+  slog_opt.rotate = 5;
+  slog_opt.format = SLF_PREFIX;
+  */
+  
+  sld = slog_open(SLT_LOCAL , SL_VERBOSE , &slog_opt, err_msg);
+  if(sld < 0)
+  {
+    printf("err! msg:%s\n" , err_msg);
+    return -1;
+  }
+  slog_log(sld , SL_INFO , "slog_open success! sld:%d" , sld);
+  slog_log(sld , SL_INFO , "then try to open slog_net!");
+  
+  slog_close(sld);
+  ...
+  
+```
+上面的代码记录了本地日志，在设置日志选项时可以只填写日志名，其他使用0则会使用默认的参数配置，也可以自行设置相关参数  
+
+* 网络日志
+```
+  ...
+  int sld_net = -1;
+  
+  /*Test Net*/
+  memset(&slog_opt , 0 ,sizeof(slog_opt));
+  strncpy(slog_opt.type_value._net.ip , "127.0.0.1" , sizeof(slog_opt.type_value._net.ip));
+  slog_opt.type_value._net.port = 7777;
+  slog_opt.log_degree = SLD_MIC;
+  //slog_opt.log_size = 1024;
+  //slog_opt.rotate = 5;
+  slog_opt.format = SLF_PREFIX;
+  
+  sld_net = slog_open(SLT_NET , SL_DEBUG , &slog_opt , err_msg);
+  if(sld_net < 0)
+  {
+    printf("open net failed! msg:%s\n" , err_msg);
+    return -1;
+  }
+  printf("open sld net success!\n");
+  slog_log(sld_net , SL_DEBUG , "[%d]nice to meet you!" , i++);
+  slog_log(sld_net , SL_DEBUG , "[%d]%s is a good girl!" , i++ , "suomei");
+  slog_log(sld_net , SL_DEBUG , "[%d]%s age:%d is %s!" , i++ , "cs" , 37 , "bad man");
+  
+  slog_close(sld_net);
+  
+```
+上面例子打开了一个网络日志slog描述符并发送日志信息到远端机器。注意这里需要远端服务器自行监听对应端口号及收包.比如可以通过  
+nc -lu 7777 监听7777端口来进行测试收包
 
 ### 简单压测：  
 gcc -g use_slog.c -lm [-lrt] -lslog -o use_slog  
