@@ -113,8 +113,8 @@ Open A SLOG Descriptor
  @_type_value:value of diff type
   @_local.log_name:if type is SL_LOCAL. refers to local log file name.
   @_network.ip&port:if type is SL_NETWORK. refers to remote server ip and port
- @format:format of log. default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
- @log_degree:refer SLOG_DEGREE.the timing degree of log. default by seconds.
+ @format:format of log. if 0 then default is SLF_PREFIX,if sets to SLF_RAW,then print raw info.
+ @log_degree:refer SLOG_DEGREE.the timing degree of log. if 0 then default by seconds.
  @log_size:max single log_file size.if 0 then sets to defaut 20M
  @rotate:log file rotate limit.if 0 then sets to default 5
 @err:return err msg if failed.
@@ -278,6 +278,13 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
         free(pnode->log_buff);
         return -1;
       }
+      else //set ling buf
+      {
+    	  if(setvbuf(pnode->fp , NULL , _IOLBF , 0) < 0)
+    	  {
+    		  _write_self_msg(penv , "%s change FILE* to line-buff failed. err:%s" , __FUNCTION__ , strerror(errno));
+    	  }
+      }
     }
     else  //type_network
     {
@@ -372,7 +379,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       pnode = &penv->node_list[i];
       memset(pnode , 0 , sizeof(SLOG_NODE));
 
-      //ling buff
+      //line buff
       pnode->log_buff = (char *)calloc(1 , SLOG_LOG_LINE_BUFF);
       if(!pnode->log_buff)
       {
@@ -398,6 +405,13 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
           _write_self_msg(penv , "%s" , strerror(errno));
           free(pnode->log_buff);
           return -1;
+        }
+        else //set line buf
+        {
+        	if(setvbuf(pnode->fp , NULL , _IOLBF , 0) < 0)
+            {
+        		_write_self_msg(penv , "%s change FILE* to line-buff failed. err:%s" , __FUNCTION__ , strerror(errno));
+            }
         }
       }
       else  //type_network
@@ -520,6 +534,14 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
           _write_self_msg(penv , strerror(errno));        
           return -1;
         }
+        else //set line buf
+        {
+        	if(setvbuf(pnode->fp , NULL , _IOLBF , 0) < 0)
+        	{
+        		_write_self_msg(penv , "%s change FILE* to line-buff failed. err:%s" , __FUNCTION__ , strerror(errno));
+        	}
+        }
+
       }
       else  //type network
       {
@@ -744,7 +766,14 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
     {
       _write_self_msg(penv , "%s. open %s failed! err:%s" , __FUNCTION__ , file_name , strerror(errno));        
       return -1;
-    }  
+    }
+    else //set line buf
+    {
+    	if(setvbuf(pnode->fp , NULL , _IOLBF , 0) < 0)
+        {
+    		_write_self_msg(penv , "%s change FILE* to line-buff failed. err:%s" , __FUNCTION__ , strerror(errno));
+        }
+    }
   }
 
   /***Stat File*/
@@ -792,7 +821,14 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
       
       pnode->fp = fopen(file_name , "a+");
       if(!pnode->fp)
-        _write_self_msg(penv , "%s. rotate and open %s failed! err:%s" , __FUNCTION__ , file_name , strerror(errno));        
+        _write_self_msg(penv , "%s. rotate and open %s failed! err:%s" , __FUNCTION__ , file_name , strerror(errno));
+      else //set line buf
+      {
+    	  if(setvbuf(pnode->fp , NULL , _IOLBF , 0) < 0)
+          {
+          		_write_self_msg(penv , "%s change roate FILE* to line-buff failed. err:%s" , __FUNCTION__ , strerror(errno));
+          }
+      }
 
     }
   }
