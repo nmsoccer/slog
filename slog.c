@@ -2,6 +2,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <string.h>
 #include <errno.h>
 #include <math.h>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include "slog.h"
 
@@ -140,8 +142,6 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
   int rotate = 0;
   int format = 0;
   int log_degree = 0;
-
-  int flags = 0;
   int ret = -1;
   
   
@@ -520,7 +520,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       }
     
       //type local
-      if(log_name && strlen(log_name)>0)
+      if(strlen(log_name)>0)
       {
         strncpy(pnode->type_info._local.log_name , log_name , SLOG_LOG_NAME_LEN);
         snprintf(file_name , sizeof(file_name) , "%s.%d" , log_name , pnode->log_seq);
@@ -851,12 +851,6 @@ int slog_chg_attr(int sld , int filt_level , int degree , int size , int rotate 
   SLOG_NODE *pnode = NULL;
   SLOG_ENV *penv = &slog_env;
   int real_len;
-  int ret = 0;
-
-  SLOG_LEVEL after_filt;
-  SLOG_DEGREE after_degree;
-  int after_size;
-  
   
   /***Check*/
   if(!penv->node_list || penv->list_len<0)
@@ -984,7 +978,6 @@ static int _rotate_log_file(SLOG_ENV *penv , char *log_name , int curr_seq , int
 {
   char old_file_name[2048] = {0};
   char new_file_name[2048] = {0};
-  char err_msg[128] = {0};
   int seq = max_seq - 1;
   int ret = 0;
   char buff[1024] = {0};
@@ -1205,12 +1198,12 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
   
       case SLD_MILL:
         append_num = tv.tv_usec/1000;
-        snprintf(time_appened , sizeof(time_appened) , ":%3d" , append_num);
+        snprintf(time_appened , sizeof(time_appened) , ":%3ld" , append_num);
       break;
   
       case SLD_MIC:
         append_num = tv.tv_usec;
-        snprintf(time_appened , sizeof(time_appened) , ":%6d" , append_num);
+        snprintf(time_appened , sizeof(time_appened) , ":%6ld" , append_num);
       break;
   
       default:
@@ -1233,7 +1226,7 @@ static int _slog_log(SLOG_ENV *penv , SLOG_NODE *pnode , SLOG_LEVEL level , SLOG
     {
       ts = tp.tv_sec;
       append_num = tp.tv_nsec;
-      snprintf(time_appened , sizeof(time_appened) , ":%9d" , append_num);
+      snprintf(time_appened , sizeof(time_appened) , ":%9ld" , append_num);
     }
   }
 
@@ -1299,7 +1292,6 @@ static void _net_log(SLOG_ENV *penv , SLOG_NODE *pnode , char *buff , int len)
   NET_LOG_RINGBUFF *prb = NULL;
   int ret = -1; 
   char *dst = NULL;
-  int i = 0;
   
   /***Send*/
   ret = send(pnode->type_info._net.sock_fd , buff , len , 0);
