@@ -1,4 +1,5 @@
-# SLOG
+# SLOG  
+[![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu)  
 A simple log library
 一个简单的程序本地&网络日志库  
 
