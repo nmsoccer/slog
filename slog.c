@@ -489,7 +489,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
   penv->list_len++;
 
     //print new
-  _print_node_list(penv , real_len);
+  //_print_node_list(penv , real_len);
 
     //Empty Node
   //sld = real_len;
@@ -572,6 +572,7 @@ int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , cha
       sld = i;
         //log
       _write_self_msg(penv, "%s open success! sld:%d" , __FUNCTION__ , sld);
+      _print_node_list(penv , real_len);
       return sld;     
     }
     else //report error
