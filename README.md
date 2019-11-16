@@ -22,8 +22,12 @@ _默认头文件会装到/usr/local/include/slog 库文件位于/usr/local/lib/l
 gcc use_slog.c -lm -lslog -o use_slog  
 _如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig_  
 
+go使用:   
+首先编译安装slog的C头文件及库文件   
+下载go/slog.go到工作目录 比如GOPATH/src/test_c/clib/slog 然后go intall 安装  
+在源码里引用slog即可 比如import slog test_c/clib/slog(参考go/test_c.go)  
 
-### API:
+### CAPI:
 - **``int slog_open(SLOG_TYPE type , SLOG_LEVEL filt_level , SLOG_OPTION *option , char *err);``**
   * SLOG_OPTION结构:
   ```
@@ -79,8 +83,43 @@ _说明：相同文件名(包括路径)只能打开一次。另外的不同日�
   * sld:已打开的描述符  
   * filt_level:新的过滤等级.-1则忽略  
   * degree:新的日志粒度. -1则忽略  
-  * size:新的单个日志文件大小 -1则忽略  
-  * rotate:滚动下标上限 -1则忽略  
+  * size:新的单个日志文件大小(只对LOCAL日志有效) -1则忽略  
+  * rotate:滚动下标上限(只对LOCAL日志有效) -1则忽略  
+
+### GOAPI
+- **``SLogLocalOpen(filt_level int , log_name string , format int , log_degree int) int``**    
+  * 打开一个本地的日志句柄。失败则返回-1 >=0成功    
+  * filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.go:SL_XX
+  * log_name:日志名
+  * format:标记是加前缀打印日志(包含日期 级别)还是原生输出.如果填0则默认带时间前缀
+  * log_degree:日志记录粒度。如果填0默认值为秒。具体请参见宏slog.h  
+  * log_size:单个日志文件大小.如果填0则默认为10M.  
+  * rotate:日志滚动下标上限。如果填0则使用默认值5
+  
+- **``SLogNetOpen(filt_level int , ip string , port int , format int , log_degree int) int``**  
+  * 打开一个网络的日志句柄(对端需监听一个UDP端口)。失败则返回-1 >=0成功    
+  * filt_level:设定日志过滤级别，低于该级别的日志则不会输出。具体宏请参见slog.go:SL_XX
+  * ip:接收端ip地址
+  * port:接收端监听端口
+  * format:标记是加前缀打印日志(包含日期 级别)还是原生输出.如果填0则默认带时间前缀
+  * log_degree:日志记录粒度。如果填0默认值为秒。具体请参见宏slog.h  
+ 
+- **``SLogClose(sld int) int``**
+  * _关闭一个已经打开的日志控制描述符_
+
+- **``SLog(sld int , log_level int , format string, arg ...interface{}) int``**
+  * _打印一条日志_  
+  * sld:通过slog_open调用成功之后返回的描述符  
+  * log_level:该条日志的等级  
+  * format及arg：日志的模式及内容 形如fmt.Printf()里的格式化参数  
+  
+- **``SLogChgAttr(sld int, filt_level int, degree int, size int, rotate int, format int) int``**  
+  * _动态更新已打开描述符的属性_  
+  * sld:已打开的描述符  
+  * filt_level:新的过滤等级.-1则忽略  
+  * degree:新的日志粒度. -1则忽略  
+  * size:新的单个日志文件大小(只对LOCAL日志有效) -1则忽略  
+  * rotate:滚动下标上限(只对LOCAL日志有效) -1则忽略  
 
 **备注:**    
 ***以上所有API调用过程中产生的错误以及调试信息都被打印在主进程的执行目录下slog.log.*中***    
