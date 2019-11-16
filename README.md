@@ -12,7 +12,7 @@ A simple log library
 * **网络日志** 支持将文本日志以UDP包的方式直接发到远程服务器  
 _注意：该日志库目前非线程安全，多线程类型程序需斟酌使用._
 
-### 安装  
+### C安装  
 下载安装包文件xx.zip  
 unzip xx.zip  
 ./install.sh  
@@ -22,7 +22,7 @@ _默认头文件会装到/usr/local/include/slog 库文件位于/usr/local/lib/l
 gcc use_slog.c -lm -lslog -o use_slog  
 _如果找不到动态库请先将/usr/local/lib加入到/etc/ld.so.conf 然后执行/sbin/ldconfig_  
 
-go使用:   
+### GO安装:   
 首先编译安装slog的C头文件及库文件   
 下载go/slog.go到工作目录 比如GOPATH/src/test_c/clib/slog 然后go intall 安装  
 在源码里引用slog即可 比如import slog test_c/clib/slog(参考go/test_c.go)  
