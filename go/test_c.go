@@ -23,7 +23,7 @@ func main() {
 	
 	
 	/*net*/
-	n_slogd := slog.SLogNetOpen(slog.SL_DEBUG ,"127.0.0.1" , 7777 , slog.SLF_PREFIX , slog.SLD_MILL , 1024 , 5);
+	n_slogd := slog.SLogNetOpen(slog.SL_DEBUG ,"127.0.0.1" , 7777 , slog.SLF_PREFIX , slog.SLD_MILL);
 	fmt.Printf("n_slogd:%d\n", n_slogd);
 	
 	if n_slogd >= 0 {

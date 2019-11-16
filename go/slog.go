@@ -127,7 +127,7 @@ Open A Net SLOG Descriptor(Peer should listen on a UDP Port)
 *-1: FAILED
 *>=0:ALLOCATED SLD(SLOG Descriptor)
 */
-func SLogNetOpen(filt_level int , ip string , port int , format int , log_degree int , log_size int , rotate int) int {
+func SLogNetOpen(filt_level int , ip string , port int , format int , log_degree int) int {
 	var _func_ string = "SLogNetOpen";
 	//Arg Check
 	if filt_level < SL_VERBOSE || filt_level > SL_FATAL {
@@ -148,10 +148,7 @@ func SLogNetOpen(filt_level int , ip string , port int , format int , log_degree
 	if log_degree<SLD_SEC || log_degree>SLD_NANO {
 		log_degree = SLD_SEC;
 	}
-	
-	//no need
-	log_size = 0;
-	rotate = 5;	
+		
 	
 	//fulfill option
 	var c_option C.SLOG_OPTION;
@@ -165,8 +162,7 @@ func SLogNetOpen(filt_level int , ip string , port int , format int , log_degree
 		
 	c_option.log_degree = C.SLOG_DEGREE(log_degree);
 	c_option.format = C.SLOG_FORMAT(format);
-	c_option.log_size = C.int(log_size);
-	c_option.rotate = C.int(rotate);
+	
 	
 	fmt.Printf("net coption:%+v %T\n", c_option , &c_option);
 	
