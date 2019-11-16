@@ -107,7 +107,7 @@ func SLogLocalOpen(filt_level int , log_name string , format int , log_degree in
 	c_option.log_size = C.int(log_size);
 	c_option.rotate = C.int(rotate);
 	
-	fmt.Printf("local coption:%+v %T\n", c_option , &c_option);
+	//fmt.Printf("local coption:%+v %T\n", c_option , &c_option);
 	
 	//open
 	slogd := C.slog_open(C.SLT_LOCAL  , C.SLOG_LEVEL(filt_level) ,&c_option , nil);
@@ -164,7 +164,7 @@ func SLogNetOpen(filt_level int , ip string , port int , format int , log_degree
 	c_option.format = C.SLOG_FORMAT(format);
 	
 	
-	fmt.Printf("net coption:%+v %T\n", c_option , &c_option);
+	//fmt.Printf("net coption:%+v %T\n", c_option , &c_option);
 	
 	//open
 	slogd := C.slog_open(SLT_NET  , C.SLOG_LEVEL(filt_level) ,&c_option , nil);
@@ -194,7 +194,7 @@ Log
 */
 func SLog(sld int , log_level int , format string, arg ...interface{}) int {
 	str := fmt.Sprintf(format, arg...);
-	fmt.Printf("SLog:%s\n", str);
+	//fmt.Printf("SLog:%s\n", str);
 	cs := C.CString(str);
 	defer C.free(unsafe.Pointer(cs));
 	
