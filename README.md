@@ -1,7 +1,7 @@
 # SLOG  
 [![996.icu](https://img.shields.io/badge/link-996.icu-red.svg)](https://996.icu) [![LICENSE](https://img.shields.io/badge/license-Anti%20996-blue.svg)](https://github.com/996icu/996.ICU/blob/master/LICENSE)   
 A simple log library
-一个简单的程序本地&网络日志库  
+一个简单的程序本地&网络日志库   
 
 支持功能:
 * **日志分级** 目前分为verbose,debug,info,err,fatal等五个等级，打印日志时设定。  
