@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"time"
 	slog "test_c/clib/slog"
+	"strconv"
+	"sync"
 )
 
 func test_pressure() {
-	sld := slog.SLogLocalOpen(slog.SL_VERBOSE ,"./press_slog" , slog.SLF_PREFIX , slog.SLD_MILL , 1024*1024*10 , 9);
+	sld := slog.SLogLocalOpen(slog.SL_VERBOSE ,"./press_slog" , slog.SLF_PREFIX , slog.SLD_SEC , 1024*1024*10 , 9);
 	fmt.Printf("slogd:%d\n", sld);
 	if sld < 0 {
 		fmt.Printf("open press failed!\n");
@@ -33,6 +35,51 @@ func test_pressure() {
   }
   fmt.Printf("test done success:%d fail:%d\n" , success , fail);
 }
+
+func test_go() int {
+	slds := [10]int{-1};
+	check := make(chan int);
+	var lock sync.Mutex;
+	
+	for i:=0; i<len(slds); i++ {
+		slds[i] = slog.SLogLocalOpen(slog.SL_DEBUG , "test_go."+strconv.Itoa(i)+".log" , slog.SLF_PREFIX , slog.SLD_SEC , 1024*1024 , 5);
+		if slds[i] < 0 {
+			fmt.Printf("open %d log failed!\n", i);
+			return -1;
+		} else {
+			fmt.Printf("open %d log success!\n", i);
+		}
+	}
+	
+	//write
+	for i:=0; i<len(slds); i++ {
+		go func(sld int) {
+			for count:=0; count<100; count++ {
+				slog.SLog(sld , slog.SL_DEBUG , "[%d] writes string %s beat %s %d times!" , sld , "cs" , "suomei" , count);
+			}
+			fmt.Printf("[%d] exit!\n" , sld);
+			lock.Lock();
+			slog.SLogClose(sld);
+			lock.Unlock();
+			check <- 1;
+		}(slds[i]);
+				
+	}
+	
+	//main	
+	total := 0;
+	for v := range check {
+		total += v;
+		if total >= 10 {
+			fmt.Printf("all exist\n");
+			return 0;
+		}
+	}
+	//time.Sleep(10e9);
+	
+	return 0;
+}
+
 
 func normal() {
 	/*local*/
@@ -64,5 +111,6 @@ func main() {
 	fmt.Printf("TestC\n");
 	normal();
 	//test_pressure();
+	//test_go();
 }
 
