@@ -1484,7 +1484,7 @@ static int _net_open(SLOG_ENV *penv , SLOG_NODE *pnode)
   }
 
   flags |= O_NONBLOCK;
-  ret = fcntl(sock_fd , F_SETFL , &flags);
+  ret = fcntl(sock_fd , F_SETFL , flags);
   if(flags < 0)
   {
     _write_self_msg(penv, "<%s> fcntl set flag non-block failed! err:%s",__FUNCTION__ , strerror(errno));
