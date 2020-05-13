@@ -713,7 +713,7 @@ int slog_log(int sld , SLOG_LEVEL log_level , char *fmt , ...)
   /***Basic Arg Check*/
   if(sld<0)
   {
-    _write_self_msg(penv, "%s failed! sld illegal! sld:%d", __FUNCTION__ , sld);
+    //_write_self_msg(penv, "%s failed! sld illegal! sld:%d", __FUNCTION__ , sld);
     return -1;
   }
 
