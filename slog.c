@@ -15,7 +15,7 @@
 #include <netinet/in.h>
 #include "slog.h"
 
-#define SLOG_MAX_LINE_LEN (1024*2)
+#define SLOG_MAX_LINE_LEN (1024*20)
 #define SLOG_LOG_LINE_BUFF (SLOG_MAX_LINE_LEN)
 
 #define SLOG_SELF_FILE "./slog.log"

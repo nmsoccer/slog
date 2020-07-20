@@ -42,19 +42,19 @@ function install()
     exit 1
   fi
 
-  cp ${SO_NAME} ${LIB_DIR}
-  if [[ $? -ne 0 ]]
-  then
-    exit 1
-  fi
+  #cp ${SO_NAME} ${LIB_DIR}
+  #if [[ $? -ne 0 ]]
+  #then
+  #  exit 1
+  #fi
 
-  cd ${LIB_DIR}
-  rm ${LINK_NAME}
-  ln -s ${SO_NAME} ${LINK_NAME}
-  if [[ $? -ne 0 ]]
-  then
-    exit 1
-  fi
+  #cd ${LIB_DIR}
+  #rm ${LINK_NAME}
+  #ln -s ${SO_NAME} ${LINK_NAME}
+  #if [[ $? -ne 0 ]]
+  #then
+  #  exit 1
+  #fi
 
   cd ${WORK_DIR}
   rm ${SO_NAME}
